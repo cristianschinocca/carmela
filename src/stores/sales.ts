@@ -4,6 +4,7 @@ export type SaleLineRecord = {
   category: string;
   quantity: number;
   unitPrice: number;
+  note?: string;
 };
 
 export type SaleRecord = {

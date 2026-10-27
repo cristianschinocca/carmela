@@ -523,38 +523,34 @@ export function App() {
                               </button>
                             </div>
                           </section>
-                          <section className="panel operation cash-snapshot">
+                          <section className="panel cash-snapshot">
                             <div className="panel-heading">
                               <div>
                                 <h2>Caja del turno</h2>
                                 <p>Un resumen antes de hacer el arqueo.</p>
                               </div>
-                              <span className="badge ready">Abierta</span>
+                              <span className="cash-snapshot-status"><i aria-hidden="true" /> Abierta</span>
                             </div>
-                            <div className="operation-number">
-                              <span className="round-icon">
-                                <Wallet size={23} />
-                              </span>
-                              <div>
+                            <div className="cash-snapshot-balance">
+                              <div className="cash-snapshot-balance-copy">
+                                <span>Efectivo esperado en caja</span>
                                 <strong>{money(CASH_BASE_EXPECTED - cashPaidExpenses)}</strong>
-                                <p>Efectivo esperado en caja</p>
+                                <p>Fondo inicial + ventas en efectivo − gastos en efectivo.</p>
                               </div>
+                              <span className="cash-snapshot-icon" aria-hidden="true"><Wallet size={20} /></span>
                             </div>
-                            <p className="cash-snapshot-note">
-                              Incluye el fondo inicial y las ventas cobradas en efectivo.
-                            </p>
-                            <div className="operation-stats">
+                            <dl className="cash-snapshot-breakdown">
                               <div>
-                                <strong>{money(CASH_SALES)}</strong>
-                                <span>Ventas en efectivo</span>
+                                <dt>Ventas en efectivo</dt>
+                                <dd>{money(CASH_SALES)}</dd>
                               </div>
                               <div>
-                                <strong>{money(cashExpenseTotal)}</strong>
-                                <span>Gastos registrados</span>
+                                <dt>Gastos registrados</dt>
+                                <dd>{money(cashExpenseTotal)}</dd>
                               </div>
-                            </div>
+                            </dl>
                             <button
-                              className="button full"
+                              className="button cash-snapshot-action"
                               onClick={() => go("Caja")}
                             >
                               Gestionar caja <ArrowRight size={16} />
