@@ -18,6 +18,7 @@ import {
   GripVertical,
   Grid2X2,
   LayoutGrid,
+  Minus,
   Palette,
   Pencil,
   Plus,
@@ -48,7 +49,7 @@ import {
   MAX_SECTOR_HEIGHT, TABLE_SLOT_LIMIT, tableGridMetrics,
   materializeTableSlots, loadSectors, makeDefaultMosaic, sectorRect,
   sectorsTouch, sectorObstacles, moveSectorRect, resizeSectorRect,
-  tablePosition, loadInitialFloor,
+  tablePosition, loadInitialFloor, SECTOR_TABLE_LIMIT,
   type Line, type Area, type SectorLayout, type Sector, type Table,
   type PinPurpose, type SectorRect,
 } from "../pos/floorModel";
@@ -857,7 +858,7 @@ export default function TablePOS({
     if (quantity < 1) return;
     setTables((current) => {
       const normalized = materializeTableSlots(current);
-      const usedNames = new Set(normalized.map((table) => Number(table.name.match(/\d+/)?.[0])).filter(Boolean));
+      const usedNames = new Set(normalized.filter((table) => table.area === addArea).map((table) => Number(table.name.match(/\d+/)?.[0])).filter(Boolean));
       const usedSlots = new Set(normalized.filter((table) => table.area === addArea).map((table) => table.slot!));
       const additions: Table[] = [];
       let number = 1;
@@ -873,7 +874,10 @@ export default function TablePOS({
           slot, ...tablePosition(slot, addArea),
         });
       }
-      return [...normalized, ...additions];
+      const combined = [...normalized, ...additions];
+      const ordered = combined.filter((table) => table.area === addArea).sort((a, b) => Number(a.name.match(/\d+/)?.[0] || 0) - Number(b.name.match(/\d+/)?.[0] || 0));
+      const positions = new Map(ordered.map((table, index) => [table.id, index]));
+      return combined.map((table) => positions.has(table.id) ? { ...table, slot: positions.get(table.id) } : table);
     });
     setActiveArea(addArea);
     setAddingTables(false);
@@ -917,8 +921,11 @@ export default function TablePOS({
     const occupiedSlots = new Set(materializeTableSlots(tables).filter((table) => table.area === area).map((table) => table.slot!));
     let slot = 0;
     while (occupiedSlots.has(slot)) slot++;
+    const usedNumbers = new Set(tables.filter((table) => table.area === area).map((table) => Number(table.name.match(/\d+/)?.[0])));
+    let number = 1;
+    while (usedNumbers.has(number)) number++;
     setTables((current) => materializeTableSlots(current).map((table) => table.id === selected.id
-      ? { ...table, area, slot, ...tablePosition(targetCount, area) } : table));
+      ? { ...table, name: `Mesa ${number}`, area, slot, ...tablePosition(targetCount, area) } : table));
     setActiveArea(area);
     onToast(`${selected.name} se movió a ${target.label}.`);
   };
@@ -1139,7 +1146,13 @@ export default function TablePOS({
         while (used.has(displacedSlot)) displacedSlot = (displacedSlot + 1) % TABLE_SLOT_LIMIT;
       }
       return normalized.map((table) => {
-        if (table.id === id) return { ...table, area, slot };
+        if (table.id === id) {
+          if (moving.area === area) return { ...table, area, slot };
+          const used = new Set(normalized.filter((candidate) => candidate.area === area).map((candidate) => Number(candidate.name.match(/\d+/)?.[0])));
+          let number = 1;
+          while (used.has(number)) number++;
+          return { ...table, name: `Mesa ${number}`, area, slot };
+        }
         if (table.id === occupant?.id) return { ...table, slot: displacedSlot };
         return table;
       });
@@ -1184,7 +1197,7 @@ export default function TablePOS({
     const label = sectorName.trim();
     if (!label) return;
     const id = `sector-${Date.now()}`;
-    setSectors((current) => [...current, { id, label, description: "Sector personalizado", limit: 64, columns: 9, start: 1, minHeight: 186,
+    setSectors((current) => [...current, { id, label, description: "Sector personalizado", limit: SECTOR_TABLE_LIMIT, columns: 9, start: 1, minHeight: 186,
       layout: isFreeform ? { x: 0, y: boardHeight + 14, width: 0.72, height: FREEFORM_MIN_HEIGHT } : undefined,
     }]);
     setActiveArea(id);
@@ -1280,9 +1293,28 @@ export default function TablePOS({
             </p>
           </div>
           <div className="floor-actions">
-            <button className="button" onClick={() => openAddTables()}>
-              <Plus size={16} /> Agregar mesa
-            </button>
+            <div className="table-add-anchor">
+              <button className="button" aria-expanded={addingTables} onClick={() => addingTables ? setAddingTables(false) : openAddTables()}>
+                <Plus size={16} /> Agregar mesa
+              </button>
+              {addingTables && <div className="panel table-add-panel" role="region" aria-label="Agregar mesas" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setAddingTables(false); } }}>
+                <div className="table-add-heading">
+                  <span><strong>Agregar mesas</strong><small>Elegí dónde y cuántas agregar.</small></span>
+                  <button type="button" className="table-add-close" aria-label="Cerrar" onClick={() => setAddingTables(false)}><X size={16} /></button>
+                </div>
+                <label>Sector<select value={addArea} onChange={(event) => { setAddArea(event.target.value); setAddCount(1); }}>{sectors.filter((area) => area.id !== "counter").map((area) => <option key={area.id} value={area.id}>{area.label} · {area.limit - areaCounts[area.id]} libres</option>)}</select></label>
+                <div className="table-add-quantity">
+                  <span>Cantidad de mesas</span>
+                  <div className="table-add-stepper">
+                    <button type="button" aria-label="Restar una mesa" disabled={addCount <= 1} onClick={() => setAddCount(Math.max(1, addCount - 1))}><Minus size={15} /></button>
+                    <input aria-label="Cantidad de mesas" type="number" min={1} max={Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0))} value={addCount} onChange={(event) => setAddCount(Math.min(Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0)), Math.max(1, Math.floor(Number(event.target.value) || 1))))} onKeyDown={(event) => { if (event.key === "Enter") createTables(); }} />
+                    <button type="button" aria-label="Sumar una mesa" disabled={addCount >= Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0))} onClick={() => setAddCount(addCount + 1)}><Plus size={15} /></button>
+                  </div>
+                </div>
+                {(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0) && <p>Este sector está completo. Eliminá mesas libres o creá otro sector.</p>}
+                <button className="button primary table-add-submit" onClick={createTables} disabled={(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0)}><Plus size={15} /> Agregar {addCount === 1 ? "mesa" : "mesas"}</button>
+              </div>}
+            </div>
             <button
               className={layoutMode ? "button primary" : "button"}
               aria-pressed={layoutMode}
@@ -1351,14 +1383,6 @@ export default function TablePOS({
         </motion.div>
       )}
       {addingSector && <div className="panel sector-create"><label htmlFor="new-sector-name">Nombre del sector</label><input id="new-sector-name" autoFocus maxLength={32} value={sectorName} onChange={(event) => setSectorName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSector(); if (event.key === "Escape") setAddingSector(false); }} placeholder="Ej. Terraza" /><button className="button primary" onClick={createSector} disabled={!sectorName.trim()}>Crear sector</button><button className="button" onClick={() => setAddingSector(false)}>Cancelar</button></div>}
-      {addingTables && <div className="panel table-add-panel">
-        <div><strong>Agregar mesas</strong><small>Elegí el sector y cuántas mesas querés crear.</small></div>
-        <label>Sector<select value={addArea} onChange={(event) => { setAddArea(event.target.value); setAddCount(1); }}>{sectors.filter((area) => area.id !== "counter").map((area) => <option key={area.id} value={area.id}>{area.label} · {area.limit - areaCounts[area.id]} libres</option>)}</select></label>
-        <label>Cantidad<input type="number" min={1} max={Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0))} value={addCount} onChange={(event) => setAddCount(Math.min(Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0)), Math.max(1, Math.floor(Number(event.target.value) || 1))))} onKeyDown={(event) => { if (event.key === "Enter") createTables(); if (event.key === "Escape") setAddingTables(false); }} /></label>
-        <button className="button primary" onClick={createTables} disabled={(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0)}>Agregar</button>
-        <button className="button" onClick={() => setAddingTables(false)}>Cancelar</button>
-        {(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0) && <p>Este sector está completo. Eliminá mesas libres o creá otro sector.</p>}
-      </div>}
       {confirmDeleteTables && <div className="panel table-delete-panel" role="region" aria-labelledby="table-delete-title" aria-describedby="table-delete-description">
         <div><strong id="table-delete-title">Eliminar {selectedTableIds.length} {selectedTableIds.length === 1 ? "mesa" : "mesas"}</strong><p id="table-delete-description">{occupiedSelection.length ? `${occupiedSelection.length} ${occupiedSelection.length === 1 ? "tiene consumos o una cuenta solicitada. Cerrá esa mesa o sacala" : "tienen consumos o una cuenta solicitada. Cerrá esas mesas o sacalas"} de la selección para continuar.` : "Se quitarán del plano las mesas seleccionadas. Esta acción no se puede deshacer."}</p></div>
         <button className="button danger-button" disabled={Boolean(occupiedSelection.length)} onClick={deleteSelectedTables}>Confirmar eliminación</button>

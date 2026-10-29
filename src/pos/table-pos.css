@@ -150,3 +150,27 @@ html[data-theme='dark'] .account-dialog-scrim .product-position-canvas>button{ba
   .account-dialog-scrim .pos-categories button{width:58px;height:58px;padding:3px}
   .pos-products-workspace{flex:none}
 }
+
+/* Compact add-tables popover keeps the floor plan in place. */
+.table-add-anchor{position:relative}
+.table-add-anchor .table-add-panel{position:absolute;z-index:40;top:calc(100% + 8px);right:0;width:min(320px,calc(100vw - 32px));display:grid;grid-template-columns:1fr 90px;align-items:end;gap:12px;padding:16px;box-shadow:0 14px 38px #0003}
+.table-add-anchor .table-add-panel>div{grid-column:1 / -1;min-width:0}
+.table-add-anchor .table-add-panel label{min-width:0}
+.table-add-anchor .table-add-panel select,.table-add-anchor .table-add-panel input{width:100%;min-width:0}
+.table-add-anchor .table-add-panel>p{grid-column:1 / -1}
+@media(max-width:760px){.table-add-anchor .table-add-panel{right:auto;left:0}.table-add-anchor .table-add-panel>div{flex-basis:auto}}
+.table-add-anchor .table-add-panel{display:flex;flex-direction:column;align-items:stretch;gap:15px;width:min(290px,calc(100vw - 32px));padding:18px;border-radius:16px}
+.table-add-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.table-add-heading strong{font-size:14px}
+.table-add-heading small{margin-top:5px;line-height:1.4}
+.table-add-close{display:grid;place-items:center;width:28px;height:28px;margin:-5px -5px 0 0;border-radius:7px;color:var(--muted)}
+.table-add-close:hover{background:var(--brand-soft);color:var(--brand-deep)}
+.table-add-anchor .table-add-panel label{font-size:10px;font-weight:600;gap:7px}
+.table-add-quantity{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font-size:10px;font-weight:600}
+.table-add-stepper{display:flex;align-items:center;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--surface)}
+.table-add-stepper button{display:grid;place-items:center;width:34px;height:36px;color:var(--text)}
+.table-add-stepper button:hover:not(:disabled){background:var(--brand-soft)}
+.table-add-anchor .table-add-stepper input{width:38px;height:36px;padding:0;border:0;border-radius:0;text-align:center;font-weight:600;appearance:textfield;-moz-appearance:textfield}
+.table-add-stepper input::-webkit-inner-spin-button,.table-add-stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.table-add-submit{width:100%;min-height:40px}
+

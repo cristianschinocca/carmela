@@ -26,6 +26,7 @@ import {
   ExternalLink,
   Instagram,
   SlidersHorizontal,
+  ReceiptText,
   LoaderCircle,
   UsersRound,
   LifeBuoy,
@@ -42,6 +43,7 @@ import {
 } from "./data";
 import { Metric } from "./components/Operations";
 import TablePOS from "./components/TablePOS";
+import { PaidTablesDialog } from "./components/PaidTablesDialog";
 import { ProductManager } from "./components/ProductManager";
 import { TeamManager } from "./components/TeamManager";
 import { AttendanceManager } from "./components/AttendanceManager";
@@ -69,7 +71,6 @@ const nav = [
   ["Resumen", LayoutDashboard],
   ["Punto de venta", ShoppingBag],
   ["Productos", Package],
-  ["Caja", Wallet],
   ["Fichaje", Clock3],
   ["Menú digital", QrCode],
   ["Reportes", ChartNoAxesCombined],
@@ -107,6 +108,9 @@ export function App() {
   const [products, setProducts] = useState<Product[]>(loadProducts);
   const [categoryList, setCategoryList] = useState<string[]>(loadCategories);
   const [page, setPage] = useState("Resumen");
+  const [cashOpen, setCashOpen] = useState(false);
+  const [salesOpen, setSalesOpen] = useState(false);
+  const [cashMode, setCashMode] = useState<"movements" | "count">("movements");
   const [publicView, setPublicView] = useState(location.hash === "#menu");
   const [publicThemeActive, setPublicThemeActive] = useState(
     location.hash === "#menu",
@@ -130,13 +134,13 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(CASH_EXPENSE_STORAGE, JSON.stringify(cashExpenses));
   }, [cashExpenses]);
-  const cashExpenseTotal = cashExpenses.reduce(
+  const cashExpenseTotal = cashExpenses.filter((expense) => expense.kind !== "ajuste").reduce(
     (sum, expense) => sum + expense.amount,
     0,
   );
   const cashPaidExpenses = cashExpenses
     .filter((expense) => expense.payment === "Efectivo")
-    .reduce((sum, expense) => sum + expense.amount, 0);
+    .reduce((sum, expense) => sum + (expense.direction === "in" ? -expense.amount : expense.amount), 0);
   useEffect(() => {
     const syncPublicView = () => {
       const nextPublicView = location.hash === "#menu";
@@ -264,12 +268,13 @@ export function App() {
         ) : (
           <motion.div
             key="dashboard"
-            className="app-shell"
+            className="dashboard-frame"
             variants={pageVariants}
             initial="initial"
             animate="animate"
             exit="exit"
           >
+            <div className="app-shell">
             <motion.aside className={side ? "sidebar visible" : "sidebar"}>
               <button
                 className="workspace profile-workspace"
@@ -556,7 +561,7 @@ export function App() {
                             </dl>
                             <button
                               className="button cash-snapshot-action"
-                              onClick={() => go("Caja")}
+                              onClick={() => { setCashMode("movements"); setCashOpen(true); }}
                             >
                               Gestionar caja <ArrowRight size={16} />
                             </button>
@@ -708,12 +713,6 @@ export function App() {
                           </div>
                         </motion.button>
                       </div>
-                    ) : page === "Caja" ? (
-                      <CashRegister
-                        onToast={toast}
-                        expenses={cashExpenses}
-                        setExpenses={setCashExpenses}
-                      />
                     ) : page === "Reportes" ? (
                       <SalesReports products={products} />
                     ) : page === "Equipo" ? (
@@ -791,9 +790,13 @@ export function App() {
                 </AnimatePresence>
               </main>
             </div>
+              </div>
+            <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones"><button className="utility-rail-button" aria-label="Abrir caja" aria-pressed={cashOpen && cashMode === "movements"} title="Caja" onClick={() => { setCashMode("movements"); setCashOpen(true); }}><Wallet size={19} /></button><button className="utility-rail-button" aria-label="Abrir arqueo" aria-pressed={cashOpen && cashMode === "count"} title="Arqueo" onClick={() => { setCashMode("count"); setCashOpen(true); }}><ReceiptText size={19} /></button><button className="utility-rail-button" aria-label="Mesas cobradas del día" aria-pressed={salesOpen} title="Mesas cobradas del día" onClick={() => setSalesOpen(true)}><ShoppingBag size={19} /></button></aside>
           </motion.div>
         )}
       </AnimatePresence>
+      <PaidTablesDialog open={salesOpen && !publicView} onClose={() => setSalesOpen(false)} />
+      <CashRegister mode={cashMode} open={cashOpen && !publicView} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
       <AnimatePresence>
         {notice && (
           <motion.div

@@ -28,6 +28,7 @@ const TABLE_GRID_START_X = 36;
 const TABLE_GRID_START_Y = 58;
 export const SECTORS_KEY = "carmela.pos.sectors.v1";
 export const COUNTER_LIMIT = 50;
+export const SECTOR_TABLE_LIMIT = 60;
 const COUNTER_MAX_HEIGHT = 320;
 export const FREEFORM_MIN_HEIGHT = 220;
 export const SECTOR_GAP = 14;
@@ -62,7 +63,7 @@ export const materializeTableSlots = (items: Table[]): Table[] => {
   });
 };
 const DEFAULT_SECTORS: Sector[] = [
-  { id: "salon", label: "Salón", description: "Mesas interiores", limit: 64, columns: 9, start: 1, minHeight: 186 },
+  { id: "salon", label: "Salón", description: "Mesas interiores", limit: SECTOR_TABLE_LIMIT, columns: 9, start: 1, minHeight: 186 },
   {
     id: "counter",
     label: "Mostrador",
@@ -72,7 +73,7 @@ const DEFAULT_SECTORS: Sector[] = [
     start: 10,
     minHeight: 186,
   },
-  { id: "patio", label: "Patio", description: "Mesas exteriores", limit: 64, columns: 12, start: 1, minHeight: 186 },
+  { id: "patio", label: "Patio", description: "Mesas exteriores", limit: SECTOR_TABLE_LIMIT, columns: 12, start: 1, minHeight: 186 },
 ];
 const clampSectorColumns = (value: number) => Math.min(12, Math.max(3, Math.round(value)));
 export const loadSectors = (): Sector[] => {
@@ -86,7 +87,7 @@ export const loadSectors = (): Sector[] => {
       return {
         ...item,
         description: typeof item.description === "string" ? item.description : "Sector de mesas",
-        limit: item.id === "counter" ? COUNTER_LIMIT : 64,
+        limit: item.id === "counter" ? COUNTER_LIMIT : SECTOR_TABLE_LIMIT,
         columns,
         start: Math.min(13 - columns, Math.max(1, Number.isFinite(item.start) ? Math.round(item.start) : defaultStart)),
         minHeight: Number.isFinite(item.minHeight) ? Math.min(item.id === "counter" ? COUNTER_MAX_HEIGHT : 1400, Math.max(140, item.minHeight)) : 186,
@@ -261,19 +262,7 @@ const loadTables = () => {
           })),
         ),
       );
-    const counts: Record<Area, number> = {};
-    for (const table of parsed as Table[]) counts[table.area] = (counts[table.area] || 0) + 1;
-    const exceedsLimit = sectors.some((area) => area.id !== "counter" && counts[area.id] > area.limit);
-    const normalized = parsed.map((table: Table) => ({
-      ...table,
-      billRequested: Boolean(table.billRequested),
-    }));
-    if (exceedsLimit)
-      return normalizeCounterNumbers(
-        distributeAreas(
-          normalized.map(({ area: _, ...table }: Table) => table),
-        ),
-      );
+    const normalized = parsed.map((table: Table) => ({ ...table, billRequested: Boolean(table.billRequested) }));
     let compacted = [...normalized];
     for (const area of ["salon", "patio"] as const) {
       const areaTables = compacted.filter((table) => table.area === area);
@@ -320,7 +309,7 @@ const loadTables = () => {
   }
 };
 export const loadInitialFloor = (): Table[] => {
-  const existing = loadTables().filter((table) => table.area !== "counter" || table.items.length > 0 || table.billRequested).map((table) => ({
+  let existing: Table[] = loadTables().filter((table) => table.area !== "counter" || table.items.length > 0 || table.billRequested).map((table) => ({
     ...table,
     items: table.items.map((line, index) => ({
       ...line,
@@ -328,15 +317,35 @@ export const loadInitialFloor = (): Table[] => {
       note: typeof line.note === "string" ? line.note : "",
     })),
   }));
+  const migrationKey = "carmela.pos.sector-numbers.v1";
+  if (!localStorage.getItem(migrationKey)) {
+    const keep = new Set<string>();
+    const migrated = new Map<string, Table>();
+    for (const sector of loadSectors()) {
+      if (sector.id === "counter") continue;
+      const ordered = existing.filter((table) => table.area === sector.id).sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
+      const occupied = ordered.filter((table) => table.items.length || table.billRequested);
+      const freeAllowance = Math.max(0, SECTOR_TABLE_LIMIT - occupied.length);
+      let freeKept = 0;
+      const retained = ordered.filter((table) => table.items.length || table.billRequested || freeKept++ < freeAllowance);
+      retained.forEach((table, index) => {
+        keep.add(table.id);
+        migrated.set(table.id, { ...table, name: `Mesa ${index + 1}`, slot: index });
+      });
+    }
+    existing = existing.filter((table) => table.area === "counter" || keep.has(table.id)).map((table) => migrated.get(table.id) || table);
+    localStorage.setItem(KEY, JSON.stringify(existing));
+    localStorage.setItem(migrationKey, "1");
+  }
   const seedKey = "carmela.pos.seed.128.v1";
   if (localStorage.getItem(seedKey)) return existing;
   const sectors = loadSectors();
   const next = [...existing];
-  const usedNumbers = new Set(next.map((table) => Number(table.name.match(/\d+/)?.[0])).filter(Boolean));
-  let number = 1;
   for (const area of ["salon", "patio"] as const) {
     if (!sectors.some((sector) => sector.id === area)) continue;
-    const target = 64;
+    const target = SECTOR_TABLE_LIMIT;
+    const usedNumbers = new Set(next.filter((table) => table.area === area).map((table) => Number(table.name.match(/\d+/)?.[0])).filter(Boolean));
+    let number = 1;
     const count = next.filter((table) => table.area === area).length;
     for (let index = count; index < target; index++) {
       while (usedNumbers.has(number)) number++;

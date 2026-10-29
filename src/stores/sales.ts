@@ -34,3 +34,10 @@ export const saveSale = (sale: SaleRecord) => {
   const sales = loadSales();
   localStorage.setItem(SALES_STORAGE, JSON.stringify([sale, ...sales]));
 };
+
+export const updateSalePayment = (id: string, payment: string): boolean => {
+  const sales = loadSales();
+  if (!sales.some((sale) => sale.id === id)) return false;
+  localStorage.setItem(SALES_STORAGE, JSON.stringify(sales.map((sale) => sale.id === id ? { ...sale, payment } : sale)));
+  return true;
+};

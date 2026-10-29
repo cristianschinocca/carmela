@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type FormEvent,
@@ -11,27 +12,30 @@ import {
   AlertTriangle,
   ArrowLeft,
   Banknote,
+  ArrowDownUp,
+  UsersRound,
+  Receipt,
   Check,
-  CreditCard,
   LockKeyhole,
   Plus,
   ReceiptText,
   Truck,
-  Wallet,
   X,
 } from "lucide-react";
 import { money } from "../data";
 import { modalVariants, overlayVariants } from "../motion";
 import { resetCounterTableSequence } from "../stores/counterSequence";
-import { Metric } from "./Operations";
 
 export const CASH_BASE_EXPECTED = 164500;
 export const CASH_SALES = 114500;
 export const OTHER_PAYMENTS = 170000;
-const DENOMINATIONS = [10, 20, 50, 100, 200, 500, 1000, 2000, 10000, 20000];
+const DENOMINATIONS = [10, 20, 50, 100, 200, 1000, 2000, 10000, 20000];
 
 type ClosingStep = "count" | "confirm" | null;
+type CashMovementKind = "proveedor" | "empleado" | "gasto" | "ajuste";
 export type CashExpense = {
+  kind?: CashMovementKind;
+  direction?: "in" | "out";
   id: number;
   time: string;
   supplier: string;
@@ -43,6 +47,8 @@ export type CashExpense = {
 };
 
 const emptyExpense = {
+  kind: "proveedor" as CashMovementKind,
+  direction: "out" as "in" | "out",
   supplier: "",
   concept: "",
   category: "Materia prima",
@@ -61,11 +67,24 @@ export function CashRegister({
   onToast,
   expenses,
   setExpenses,
+  open,
+  mode,
+  onClose,
 }: {
   onToast: (message: string) => void;
+  open: boolean;
+  mode: "movements" | "count";
+  onClose: () => void;
   expenses: CashExpense[];
   setExpenses: Dispatch<SetStateAction<CashExpense[]>>;
 }) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => previous?.focus();
+  }, [open]);
   const [step, setStep] = useState<ClosingStep>(null);
   const [counts, setCounts] = useState<Record<number, number>>(emptyCount);
   const [differenceReason, setDifferenceReason] = useState("");
@@ -74,10 +93,23 @@ export function CashRegister({
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState(emptyExpense);
 
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  useEffect(() => {
+    if (open && mode === "count" && closed) {
+      onToast("La caja ya está cerrada.");
+      onClose();
+    } else if (open && mode === "count") {
+      setDifferenceReason("");
+      setStep("count");
+    } else if (!open) {
+      setStep(null);
+      setExpenseOpen(false);
+    }
+  }, [open, mode, closed]);
+
+  const totalExpenses = expenses.filter((expense) => expense.kind !== "ajuste").reduce((sum, expense) => sum + expense.amount, 0);
   const cashExpenses = expenses
     .filter((expense) => expense.payment === "Efectivo")
-    .reduce((sum, expense) => sum + expense.amount, 0);
+    .reduce((sum, expense) => sum + (expense.direction === "in" ? -expense.amount : expense.amount), 0);
   const expectedCash = CASH_BASE_EXPECTED - cashExpenses;
 
   const countedTotal = useMemo(
@@ -93,7 +125,7 @@ export function CashRegister({
   const hasDifference = difference !== 0;
 
   useEffect(() => {
-    if (!step && !expenseOpen) return;
+    if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
@@ -101,19 +133,15 @@ export function CashRegister({
       event.preventDefault();
       if (expenseOpen) setExpenseOpen(false);
       else if (step === "confirm") setStep("count");
-      else setStep(null);
+      else if (step) { setStep(null); if (mode === "count") onClose(); }
+      else onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [step, expenseOpen]);
-
-  const openCount = () => {
-    setDifferenceReason("");
-    setStep("count");
-  };
+  }, [open, step, expenseOpen, onClose, mode]);
 
   const finishClosing = () => {
     if (hasDifference && differenceReason.trim().length < 3) return;
@@ -121,6 +149,7 @@ export function CashRegister({
     setClosed(true);
     setClosedTotal(countedTotal);
     setStep(null);
+    onClose();
     onToast(
       hasDifference
         ? `Caja cerrada con una diferencia de ${money(Math.abs(difference))}.`
@@ -130,12 +159,12 @@ export function CashRegister({
 
   const saveExpense = (event: FormEvent) => {
     event.preventDefault();
-    if (closed || !expenseForm.supplier.trim() || !expenseForm.concept.trim() || expenseForm.amount <= 0)
+    if (closed || ((expenseForm.kind === "proveedor" || expenseForm.kind === "empleado") && !expenseForm.supplier.trim()) || !expenseForm.concept.trim() || expenseForm.amount <= 0)
       return;
     const expense: CashExpense = {
       ...expenseForm,
       id: Date.now(),
-      supplier: expenseForm.supplier.trim(),
+      supplier: expenseForm.supplier.trim() || (expenseForm.kind === "ajuste" ? "Ajuste de caja" : "Gasto vario"),
       concept: expenseForm.concept.trim(),
       receipt: expenseForm.receipt.trim(),
       time: new Date().toLocaleTimeString("es-AR", {
@@ -146,118 +175,29 @@ export function CashRegister({
     setExpenses((current) => [...current, expense]);
     setExpenseForm(emptyExpense);
     setExpenseOpen(false);
-    onToast(
-      `Gasto a ${expense.supplier} registrado por ${money(expense.amount)}${
-        expense.payment === "Efectivo" ? ". Se descontó de la caja." : "."
-      }`,
-    );
+    onToast(`Movimiento registrado por ${money(expense.amount)}.`);
   };
 
-  const movements = [
-    ["08:00", "Apertura de caja", "Fondo inicial", "+ $ 50.000"],
-    ["09:24", "Venta #1024", "Efectivo", "+ $ 7.000"],
-    ["10:15", "Venta #1031", "Tarjeta", "+ $ 12.500"],
-    ["12:32", "Venta #1048", "Efectivo", "+ $ 8.000"],
-    ...expenses.map((expense) => [
-      expense.time,
-      expense.supplier,
-      `Gasto · ${expense.payment}`,
-      `− ${money(expense.amount)}`,
-    ]),
-    ...(closed
-      ? [["20:00", "Cierre de caja", "Arqueo", money(closedTotal || 0)]]
-      : []),
-  ];
+
+  const startMovement = (kind: CashMovementKind) => {
+    setExpenseForm({ ...emptyExpense, kind });
+    setExpenseOpen(true);
+  };
 
   return (
-    <>
-      <div className="metrics cash-metrics">
-        <Metric
-          icon={<Wallet size={19} />}
-          label={closed ? "Efectivo contado" : "Efectivo esperado en caja"}
-          value={money(closed ? closedTotal || 0 : expectedCash)}
-          sub={closed ? "Turno cerrado a las 20:00" : "Turno abierto a las 08:00"}
-        />
-        <Metric
-          icon={<Banknote size={19} />}
-          label="Ventas en efectivo"
-          value={money(CASH_SALES)}
-          sub="20 operaciones"
-        />
-        <Metric
-          icon={<CreditCard size={19} />}
-          label="Otros medios de pago"
-          value={money(OTHER_PAYMENTS)}
-          sub="28 operaciones"
-        />
-        <Metric
-          icon={<Truck size={19} />}
-          label="Gastos del turno"
-          value={money(totalExpenses)}
-          sub={expenses.length ? `${expenses.length} pagos · ${money(cashExpenses)} en efectivo` : "Sin gastos registrados"}
-        />
-      </div>
-
-      <section className="panel cash-overview">
-        <div className="cash-overview-copy">
-          <span className="eyebrow">ARQUEO DEL TURNO</span>
-          <h2>{closed ? "Caja cerrada" : "Todo listo para el cierre"}</h2>
-          <p>
-            {closed
-              ? "El conteo quedó registrado en esta sesión de demostración."
-              : "Contá el efectivo por denominación y comparalo con el saldo esperado."}
-          </p>
-        </div>
-        <div className="cash-overview-total">
-          <small>{closed ? "Total declarado" : "Saldo esperado"}</small>
-          <strong>{money(closed ? closedTotal || 0 : expectedCash)}</strong>
-        </div>
-        <div className="cash-overview-actions">
-          <button
-            className="button"
-            disabled={closed}
-            onClick={() => setExpenseOpen(true)}
-          >
-            <Plus size={16} /> Registrar gasto
-          </button>
-          <button
-            className="button primary"
-            disabled={closed}
-            onClick={openCount}
-          >
-            {closed ? <LockKeyhole size={16} /> : <ReceiptText size={16} />}
-            {closed ? "Turno cerrado" : "Iniciar arqueo"}
-          </button>
-        </div>
-      </section>
-
+    <div className={`cash-main-backdrop ${open ? "is-open" : ""} ${mode === "count" ? "cash-count-only" : ""}`} aria-hidden={!open} inert={!open} onMouseDown={(event) => { if (event.target === event.currentTarget && !step && !expenseOpen) onClose(); }}>
+      <section className="cash-main-modal" role="dialog" aria-modal="true" aria-labelledby="cash-modal-title">
+      <header className="cash-main-header"><div><span className="eyebrow">GESTIÓN DEL TURNO</span><h2 id="cash-modal-title">Movimientos de caja</h2><p>Consultá los gastos y el efectivo esperado del turno.</p></div><button ref={closeButtonRef} className="cash-main-close" aria-label="Cerrar caja" onClick={onClose}><X size={19} /></button></header>
+      <div className="cash-movement-summary"><span className={`cash-status ${closed ? "closed" : "open"}`}><i aria-hidden="true" />{closed ? "Caja cerrada" : "Caja abierta"}</span><span>Fondo inicial <strong>{money(CASH_BASE_EXPECTED - CASH_SALES)}</strong></span><span>Ventas del turno <strong>{money(CASH_SALES + OTHER_PAYMENTS)}</strong></span><span>Gastos <strong>{money(totalExpenses)}</strong></span></div>
       <div className="cash-content-grid">
-      <section className="panel cash-movements">
-        <div className="panel-heading">
-          <h2>Movimientos del turno</h2>
-          <span className={`badge ${closed ? "done" : "ready"}`}>
-            {closed ? "Caja cerrada" : "Caja abierta"}
-          </span>
-        </div>
-        {movements.map((row) => (
-          <div className="movement" key={`${row[0]}-${row[1]}`}>
-            {row.map((value, index) => (
-              <span key={index}>{value}</span>
-            ))}
-          </div>
-        ))}
-        <p className="help-copy">
-          Los datos se mantienen localmente mientras no haya una base de datos conectada.
-        </p>
-      </section>
       <section className="panel supplier-expenses">
         <div className="panel-heading">
           <div>
-            <h2>Gastos y proveedores</h2>
-            <p>Pagos registrados durante el turno.</p>
+            <h2 className="cash-section-title"><Truck size={17} aria-hidden="true" />Movimientos registrados</h2>
+            <p>Pagos y ajustes registrados durante el turno.</p>
           </div>
           {!closed && (
-            <button className="icon-btn" aria-label="Registrar gasto" onClick={() => setExpenseOpen(true)}>
+            <button className="icon-btn" aria-label="Registrar gasto" onClick={() => startMovement("gasto")}>
               <Plus size={17} />
             </button>
           )}
@@ -269,25 +209,32 @@ export function CashRegister({
                 <span className="expense-icon"><Truck size={16} /></span>
                 <div>
                   <strong>{expense.supplier}</strong>
-                  <small>{expense.concept} · {expense.category}</small>
+                  <small>{expense.concept} · {expense.kind === "ajuste" ? "Ajuste de caja" : expense.kind === "empleado" ? "Pago a empleado" : expense.kind === "gasto" ? "Gasto vario" : "Pago a proveedor"}</small>
                   <em>{expense.payment}{expense.receipt ? ` · ${expense.receipt}` : ""}</em>
                 </div>
-                <b>− {money(expense.amount)}</b>
+                <b>{expense.direction === "in" ? "+" : "−"} {money(expense.amount)}</b>
               </div>
             ))}
           </div>
         ) : (
           <div className="expense-empty">
             <Truck size={22} />
-            <strong>Sin gastos registrados</strong>
-            <p>Los pagos a proveedores van a aparecer acá.</p>
+            <strong>Sin movimientos registrados</strong>
+            <p>Los pagos y ajustes van a aparecer acá.</p>
           </div>
         )}
         <div className="expense-total">
-          <span>Total del turno</span>
+          <span>Total de gastos</span>
           <strong>{money(totalExpenses)}</strong>
         </div>
       </section>
+      </div>
+      <div className="cash-movement-footer"><div><span>{closed ? "Efectivo contado" : "Efectivo esperado en caja"}</span><strong>{money(closed ? closedTotal || 0 : expectedCash)}</strong></div></div>
+      <div className="cash-movement-actions" aria-label="Registrar movimiento">
+        <button className="button" disabled={closed} onClick={() => startMovement("empleado")}><UsersRound size={16} /> Pago a empleado</button>
+        <button className="button" disabled={closed} onClick={() => startMovement("gasto")}><Receipt size={16} /> Gasto vario</button>
+        <button className="button" disabled={closed} onClick={() => startMovement("proveedor")}><Truck size={16} /> Pago a proveedor</button>
+        <button className="button" disabled={closed} onClick={() => startMovement("ajuste")}><ArrowDownUp size={16} /> Ajuste de caja</button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -298,7 +245,7 @@ export function CashRegister({
             initial="hidden"
             animate="visible"
             exit="exit"
-            onClick={() => setStep(null)}
+            onClick={() => { setStep(null); if (mode === "count") onClose(); }}
           >
             <motion.section
               key={step}
@@ -315,7 +262,7 @@ export function CashRegister({
               <button
                 className="modal-close"
                 aria-label="Cerrar arqueo"
-                onClick={() => setStep(null)}
+                onClick={() => { setStep(null); if (mode === "count") onClose(); }}
               >
                 <X size={19} />
               </button>
@@ -338,11 +285,11 @@ export function CashRegister({
                       </strong>
                     </span>
                   </div>
+                  <div className="cash-count-columns" aria-hidden="true"><span>Billete</span><span>Cantidad</span><span>Subtotal</span></div>
                   <div className="denomination-grid">
                     {DENOMINATIONS.map((denomination) => (
                       <label className="denomination-row" key={denomination}>
                         <span>
-                          <small>Billete</small>
                           <strong>{money(denomination)}</strong>
                         </span>
                         <input
@@ -350,6 +297,14 @@ export function CashRegister({
                           type="number"
                           inputMode="numeric"
                           min="0"
+                          onFocus={(event) => event.currentTarget.select()}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            const next = event.currentTarget.closest(".denomination-row")?.nextElementSibling?.querySelector<HTMLInputElement>("input");
+                            if (next) next.focus();
+                            else event.currentTarget.closest(".cash-count-modal")?.querySelector<HTMLButtonElement>(".cash-review-button")?.focus();
+                          }}
                           step="1"
                           value={counts[denomination] || ""}
                           placeholder="0"
@@ -368,11 +323,11 @@ export function CashRegister({
                     ))}
                   </div>
                   <div className="cash-modal-actions">
-                    <button className="button" onClick={() => setStep(null)}>
-                      Guardar para después
+                    <button className="button" onClick={() => { setStep(null); if (mode === "count") onClose(); }}>
+                      Continuar después
                     </button>
                     <button
-                      className="button primary"
+                      className="button primary cash-review-button"
                       onClick={() => setStep("confirm")}
                     >
                       Revisar cierre <Check size={16} />
@@ -473,23 +428,23 @@ export function CashRegister({
                 <X size={19} />
               </button>
               <header className="cash-modal-heading">
-                <span className="eyebrow">SALIDA DE DINERO</span>
-                <h2 id="expense-modal-title">Registrar gasto</h2>
-                <p>Dejá asentado el pago y cómo salió el dinero.</p>
+                <span className="eyebrow">MOVIMIENTO DE CAJA</span>
+                <h2 id="expense-modal-title">{expenseForm.kind === "empleado" ? "Pago a empleado" : expenseForm.kind === "proveedor" ? "Pago a proveedor" : expenseForm.kind === "ajuste" ? "Ajuste de caja" : "Gasto vario"}</h2>
+                <p>Registrá el movimiento del turno.</p>
               </header>
               <form className="expense-form" onSubmit={saveExpense}>
-                <label className="field">
-                  Proveedor
+                {(expenseForm.kind === "proveedor" || expenseForm.kind === "empleado") && <label className="field">
+                  {expenseForm.kind === "empleado" ? "Empleado" : "Proveedor"}
                   <input
                     autoFocus
                     required
-                    placeholder="Ej.: Café Puerto Blest"
+                    placeholder={expenseForm.kind === "empleado" ? "Nombre del empleado" : "Nombre del proveedor"}
                     value={expenseForm.supplier}
                     onChange={(event) =>
                       setExpenseForm({ ...expenseForm, supplier: event.target.value })
                     }
                   />
-                </label>
+                </label>}
                 <label className="field">
                   Concepto
                   <input
@@ -501,6 +456,7 @@ export function CashRegister({
                     }
                   />
                 </label>
+                {expenseForm.kind === "ajuste" && <label className="field">Tipo de ajuste<select value={expenseForm.direction} onChange={(event) => setExpenseForm({ ...expenseForm, direction: event.target.value as "in" | "out" })}><option value="in">Ingreso de efectivo</option><option value="out">Salida de efectivo</option></select></label>}
                 <div className="field-row expense-field-row">
                   <label className="field">
                     Categoría
@@ -539,6 +495,7 @@ export function CashRegister({
                   <label className="field">
                     Medio de pago
                     <select
+                      disabled={expenseForm.kind === "ajuste"}
                       value={expenseForm.payment}
                       onChange={(event) =>
                         setExpenseForm({
@@ -567,7 +524,7 @@ export function CashRegister({
                   <Banknote size={17} />
                   <span>
                     {expenseForm.payment === "Efectivo"
-                      ? "Este gasto se descontará del efectivo esperado en caja."
+                      ? expenseForm.direction === "in" ? "Este ingreso se sumará al efectivo esperado en caja." : "Esta salida se descontará del efectivo esperado en caja."
                       : "Quedará registrado sin modificar el efectivo físico de la caja."}
                   </span>
                 </div>
@@ -576,7 +533,7 @@ export function CashRegister({
                     Cancelar
                   </button>
                   <button type="submit" className="button primary">
-                    <Check size={16} /> Registrar gasto
+                    <Check size={16} /> Registrar movimiento
                   </button>
                 </div>
               </form>
@@ -584,6 +541,7 @@ export function CashRegister({
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+      </section>
+    </div>
   );
 }
