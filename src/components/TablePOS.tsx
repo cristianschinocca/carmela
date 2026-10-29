@@ -10,26 +10,19 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  ArrowDown,
   ArrowRightLeft,
   BadgePercent,
-  Banknote,
-  ArrowUp,
   Check,
   ChevronDown,
-  CreditCard,
+  Eraser,
   GripVertical,
   Grid2X2,
-  KeyRound,
   LayoutGrid,
-  Minus,
-  MoveRight,
+  Palette,
   Pencil,
   Plus,
-  ReceiptText,
   RotateCcw,
   Search,
-  Smartphone,
   Trash2,
   UserRound,
   UsersRound,
@@ -43,374 +36,43 @@ import {
   type TeamMember,
 } from "../stores/team";
 import { saveSale } from "../stores/sales";
+import PosCatalog from "./PosCatalog";
+import PosAccountTicket from "./PosAccountTicket";
+import PosPaymentDialog, { type PaymentMethod } from "./PosPaymentDialog";
+import EmployeePickerDialog from "./pos-dialogs/EmployeePickerDialog";
+import CoversDialog from "./pos-dialogs/CoversDialog";
+import EmployeePinDialog from "./pos-dialogs/EmployeePinDialog";
+import TableEditDialog from "./pos-dialogs/TableEditDialog";
+import {
+  KEY, newLineId, SECTORS_KEY, FREEFORM_MIN_HEIGHT, SECTOR_GAP, COUNTER_LIMIT,
+  MAX_SECTOR_HEIGHT, TABLE_SLOT_LIMIT, tableGridMetrics,
+  materializeTableSlots, loadSectors, makeDefaultMosaic, sectorRect,
+  sectorsTouch, sectorObstacles, moveSectorRect, resizeSectorRect,
+  tablePosition, loadInitialFloor,
+  type Line, type Area, type SectorLayout, type Sector, type Table,
+  type PinPurpose, type SectorRect,
+} from "../pos/floorModel";
 import {
   allocateCounterTableNumber,
-  ensureCounterTableSequenceAtLeast,
 } from "../stores/counterSequence";
 
-type Line = { id: string; productId: number; quantity: number; note?: string };
-type Area = string;
-type SectorLayout = { x: number; y: number; width: number; height: number };
-type Sector = { id: Area; label: string; description: string; limit: number; columns: number; start: number; minHeight: number; layout?: SectorLayout; autoFit?: boolean };
-type PinPurpose = "enter" | "confirm-command" | "request-bill" | "transfer" | "settle";
-type Table = {
-  id: string;
-  name: string;
-  guests: number;
-  items: Line[];
-  discount: number;
-  billRequested: boolean;
-  operatorId?: number;
-  counterTurnNumber?: number;
-  x: number;
-  y: number;
-  area: Area;
-  slot?: number;
+const lineUnitPrice = (line: Line, productPrice: number) => Math.max(0, (line.unitPrice ?? productPrice) - (line.unitDiscount ?? 0));
+const sameLinePrice = (a: Line, b: Line) => a.unitPrice === b.unitPrice && (a.unitDiscount || 0) === (b.unitDiscount || 0);
+const NEW_COUNTER_TARGET = "__new_counter__";
+const makeCounterTable = (tables: Table[], id = `counter-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`): Table => {
+  const occupied = new Set(materializeTableSlots(tables).filter((table) => table.area === "counter").map((table) => table.slot));
+  let slot = 0;
+  while (occupied.has(slot)) slot++;
+  return { id, name: "Mostrador", area: "counter", guests: 2, items: [], discount: 0, billRequested: false, slot, ...tablePosition(slot, "counter") };
 };
-const KEY = "carmela.pos.floor.v2";
-const newLineId = () => `line-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-const TABLE_GRID_COLUMNS = 16;
-const TABLE_GRID_X_STEP = 66;
-const TABLE_GRID_Y_STEP = 56;
-const TABLE_GRID_START_X = 36;
-const TABLE_GRID_START_Y = 58;
-const SECTORS_KEY = "carmela.pos.sectors.v1";
-const COUNTER_MAX_HEIGHT = 320;
-const FREEFORM_MIN_HEIGHT = 220;
-const SECTOR_GAP = 14;
-const MAX_SECTOR_HEIGHT = 3000;
-const TABLE_SLOT_LIMIT = 256;
-const tableGridMetrics = (width: number) => {
-  const mobile = window.innerWidth <= 760;
-  const size = mobile ? 60 : 64;
-  const gap = mobile ? 9 : 11;
-  return { size, gap, columns: Math.max(1, Math.floor((Math.max(0, width - 4) + gap) / (size + gap))) };
-};
-const materializeTableSlots = (items: Table[]): Table[] => {
-  const used = new Map<Area, Set<number>>();
-  const assigned = new Map<string, number>();
-  for (const table of items) {
-    const taken = used.get(table.area) || new Set<number>();
-    used.set(table.area, taken);
-    if (Number.isInteger(table.slot) && table.slot! >= 0 && table.slot! < TABLE_SLOT_LIMIT && !taken.has(table.slot!)) {
-      assigned.set(table.id, table.slot!);
-      taken.add(table.slot!);
-    }
-  }
-  return items.map((table) => {
-    const taken = used.get(table.area)!;
-    let slot = assigned.get(table.id);
-    if (slot === undefined) {
-      slot = 0;
-      while (taken.has(slot)) slot++;
-      taken.add(slot);
-    }
-    return { ...table, slot };
-  });
-};
-const DEFAULT_SECTORS: Sector[] = [
-  { id: "salon", label: "Salón", description: "Mesas interiores", limit: 64, columns: 9, start: 1, minHeight: 186 },
-  {
-    id: "counter",
-    label: "Mostrador",
-    description: "Atención rápida",
-    limit: 5,
-    columns: 3,
-    start: 10,
-    minHeight: 186,
-  },
-  { id: "patio", label: "Patio", description: "Mesas exteriores", limit: 64, columns: 12, start: 1, minHeight: 186 },
-];
-const clampSectorColumns = (value: number) => Math.min(12, Math.max(3, Math.round(value)));
-const loadSectors = (): Sector[] => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(SECTORS_KEY) || "null");
-    if (!Array.isArray(stored) || !stored.length) return DEFAULT_SECTORS;
-    const valid = stored.filter((item) => typeof item.id === "string" && typeof item.label === "string");
-    return valid.length ? valid.map((item) => {
-      const columns = clampSectorColumns(Number.isFinite(item.columns) ? item.columns : item.width === "full" ? 12 : item.width === "narrow" ? 3 : 9);
-      const defaultStart = item.id === "counter" && columns <= 3 ? 10 : 1;
-      return {
-        ...item,
-        description: typeof item.description === "string" ? item.description : "Sector de mesas",
-        limit: item.id === "counter" ? 5 : 64,
-        columns,
-        start: Math.min(13 - columns, Math.max(1, Number.isFinite(item.start) ? Math.round(item.start) : defaultStart)),
-        minHeight: Number.isFinite(item.minHeight) ? Math.min(item.id === "counter" ? COUNTER_MAX_HEIGHT : 1400, Math.max(140, item.minHeight)) : 186,
-        autoFit: typeof item.autoFit === "boolean" ? item.autoFit : undefined,
-        layout: item.layout && [item.layout.x, item.layout.y, item.layout.width, item.layout.height].every(Number.isFinite)
-          ? {
-              width: Math.min(1, Math.max(0.16, item.layout.width)),
-              x: Math.max(0, Math.min(item.layout.x, 1 - Math.min(1, Math.max(0.16, item.layout.width)))),
-              y: Math.max(0, item.layout.y),
-              height: Math.min(MAX_SECTOR_HEIGHT, Math.max(FREEFORM_MIN_HEIGHT, item.layout.height)),
-            }
-          : undefined,
-      };
-    }) : DEFAULT_SECTORS;
-  } catch { return DEFAULT_SECTORS; }
-};
-const makeDefaultMosaic = (boardWidth: number, tables: Table[], minimumBoardHeight = 0): Record<string, SectorLayout> => {
-  const leftWidth = Math.max(260, Math.min(boardWidth * 0.77, boardWidth - 226));
-  const rightX = leftWidth + SECTOR_GAP;
-  const leftHeight = (area: Area) => {
-    const innerWidth = leftWidth - 40;
-    const columns = Math.max(1, Math.floor((innerWidth + 11) / 75));
-    const count = tables.filter((table) => table.area === area).length;
-    const rows = Math.ceil(count / columns);
-    return Math.max(300, 110 + rows * 67);
-  };
-  let salonHeight = leftHeight("salon");
-  let patioHeight = leftHeight("patio");
-  const extraHeight = Math.max(0, minimumBoardHeight - salonHeight - patioHeight - SECTOR_GAP);
-  salonHeight += Math.floor(extraHeight / 2);
-  patioHeight += Math.ceil(extraHeight / 2);
-  return {
-    salon: { x: 0, y: 0, width: leftWidth / boardWidth, height: salonHeight },
-    patio: { x: 0, y: salonHeight + SECTOR_GAP, width: leftWidth / boardWidth, height: patioHeight },
-    counter: { x: rightX / boardWidth, y: 0, width: (boardWidth - rightX) / boardWidth, height: salonHeight + SECTOR_GAP + patioHeight },
-  };
-};
-type SectorRect = { x: number; y: number; width: number; height: number };
-const sectorRect = (layout: SectorLayout, boardWidth: number): SectorRect => ({
-  x: layout.x * boardWidth, y: layout.y, width: layout.width * boardWidth, height: layout.height,
-});
-const sectorsTouch = (a: SectorRect, b: SectorRect) =>
-  a.x < b.x + b.width + SECTOR_GAP && a.x + a.width + SECTOR_GAP > b.x &&
-  a.y < b.y + b.height + SECTOR_GAP && a.y + a.height + SECTOR_GAP > b.y;
-const sectorObstacles = (items: Sector[], id: string, boardWidth: number) =>
-  items.filter((item) => item.id !== id && item.layout).map((item) => sectorRect(item.layout!, boardWidth));
-const moveSectorRect = (rect: SectorRect, desiredX: number, desiredY: number, obstacles: SectorRect[], boardWidth: number): SectorRect => {
-  let x = Math.max(0, Math.min(boardWidth - rect.width, desiredX));
-  let y = Math.max(0, desiredY);
-  // Resolve each axis from the last valid position. A sector stops at its neighbour instead of jumping through it.
-  const moveX = () => {
-    for (const other of obstacles) {
-      if (y >= other.y + other.height + SECTOR_GAP || y + rect.height + SECTOR_GAP <= other.y) continue;
-      if (x > rect.x && rect.x + rect.width + SECTOR_GAP <= other.x) x = Math.min(x, other.x - SECTOR_GAP - rect.width);
-      if (x < rect.x && rect.x >= other.x + other.width + SECTOR_GAP) x = Math.max(x, other.x + other.width + SECTOR_GAP);
-    }
-    if (obstacles.some((other) => sectorsTouch({ ...rect, x, y }, other))) x = rect.x;
-  };
-  const moveY = () => {
-    for (const other of obstacles) {
-      if (x >= other.x + other.width + SECTOR_GAP || x + rect.width + SECTOR_GAP <= other.x) continue;
-      if (y > rect.y && rect.y + rect.height + SECTOR_GAP <= other.y) y = Math.min(y, other.y - SECTOR_GAP - rect.height);
-      if (y < rect.y && rect.y >= other.y + other.height + SECTOR_GAP) y = Math.max(y, other.y + other.height + SECTOR_GAP);
-    }
-    if (obstacles.some((other) => sectorsTouch({ ...rect, x, y }, other))) y = rect.y;
-  };
-  if (Math.abs(x - rect.x) >= Math.abs(y - rect.y)) { moveX(); moveY(); }
-  else { moveY(); moveX(); }
-  return { ...rect, x, y };
-};
-const resizeSectorRect = (base: SectorRect, desired: SectorRect, obstacles: SectorRect[], boardWidth: number): SectorRect => {
-  const valid = (rect: SectorRect) => rect.width >= 220 && rect.height >= FREEFORM_MIN_HEIGHT && rect.x >= 0 &&
-    rect.x + rect.width <= boardWidth + 0.01 && !obstacles.some((other) => sectorsTouch(rect, other));
-  const furthest = (from: SectorRect, target: SectorRect) => {
-    if (valid(target)) return target;
-    let low = 0;
-    let high = 1;
-    for (let index = 0; index < 20; index++) {
-      const middle = (low + high) / 2;
-      const candidate = {
-        ...from,
-        x: from.x + (target.x - from.x) * middle,
-        width: from.width + (target.width - from.width) * middle,
-        height: from.height + (target.height - from.height) * middle,
-      };
-      if (valid(candidate)) low = middle;
-      else high = middle;
-    }
-    return { ...from, x: from.x + (target.x - from.x) * low, width: from.width + (target.width - from.width) * low, height: from.height + (target.height - from.height) * low };
-  };
-  const horizontal = furthest(base, { ...base, x: desired.x, width: desired.width });
-  return furthest(horizontal, { ...horizontal, height: desired.height });
-};
-const normalizeCounterNumbers = (tables: Table[]) => {
-  const used = new Set(
-    tables
-      .filter((table) => table.area === "counter" && table.counterTurnNumber)
-      .map((table) => table.counterTurnNumber!),
-  );
-  const normalized = tables.map((table) => {
-    if (
-      table.area !== "counter" ||
-      !table.items.length ||
-      table.counterTurnNumber
-    )
-      return table;
-    let number = 1;
-    while (used.has(number)) number++;
-    used.add(number);
-    return { ...table, counterTurnNumber: number };
-  });
-  ensureCounterTableSequenceAtLeast(Math.max(0, ...used));
-  return normalized;
-};
-const tablePosition = (index: number, area: Area = "salon") =>
-  area === "counter"
-    ? { x: 93, y: TABLE_GRID_START_Y + index * TABLE_GRID_Y_STEP }
-    : {
-        x: TABLE_GRID_START_X + (index % TABLE_GRID_COLUMNS) * TABLE_GRID_X_STEP,
-        y: TABLE_GRID_START_Y + Math.floor(index / TABLE_GRID_COLUMNS) * TABLE_GRID_Y_STEP,
-      };
-const distributeAreas = <T extends Omit<Table, "area">>(
-  tables: T[],
-): Table[] => {
-  const counterCount = Math.min(5, Math.ceil(tables.length * 0.08));
-  const salonCount = Math.ceil((tables.length - counterCount) / 2);
-  const patioCount = tables.length - counterCount - salonCount;
-  const counts: Record<Area, number> = { salon: 0, patio: 0, counter: 0 };
-  return tables.map((table, index) => {
-    const area: Area =
-      index < salonCount
-        ? "salon"
-        : index < salonCount + patioCount
-          ? "patio"
-          : "counter";
-    return { ...table, area, ...tablePosition(counts[area]++, area) };
-  });
-};
-const initialTables = (): Table[] =>
-  distributeAreas(
-    Array.from({ length: 30 }, (_, index) => ({
-      id: `table-${index + 1}`,
-      name: `Mesa ${index + 1}`,
-      guests: 2,
-      items: [],
-      discount: 0,
-      billRequested: false,
-      operatorId: undefined,
-      ...tablePosition(index),
-    })),
-  );
-const loadTables = () => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (!Array.isArray(parsed)) return initialTables();
-    if (!parsed.length) return [];
-    const sectors = loadSectors();
-    const valid = parsed.every((table) =>
-      sectors.some((area) => area.id === table.area),
-    );
-    if (!valid)
-      return normalizeCounterNumbers(
-        distributeAreas(
-          parsed.map((table) => ({
-          ...table,
-          billRequested: Boolean(table.billRequested),
-          })),
-        ),
-      );
-    const counts: Record<Area, number> = {};
-    for (const table of parsed as Table[]) counts[table.area] = (counts[table.area] || 0) + 1;
-    const exceedsLimit = sectors.some((area) => counts[area.id] > area.limit);
-    const normalized = parsed.map((table: Table) => ({
-      ...table,
-      billRequested: Boolean(table.billRequested),
-    }));
-    if (exceedsLimit)
-      return normalizeCounterNumbers(
-        distributeAreas(
-          normalized.map(({ area: _, ...table }: Table) => table),
-        ),
-      );
-    let compacted = [...normalized];
-    for (const area of ["salon", "patio"] as const) {
-      const areaTables = compacted.filter((table) => table.area === area);
-      const oldAutoLayout = areaTables.every(
-        (table, index) =>
-          table.x === 38 + (index % 8) * 133 &&
-          table.y === 42 + Math.floor(index / 8) * 105,
-      );
-      const compactAutoLayout = areaTables.every(
-        (table, index) =>
-          table.x === 18 + (index % TABLE_GRID_COLUMNS) * TABLE_GRID_X_STEP &&
-          table.y === 50 + Math.floor(index / TABLE_GRID_COLUMNS) * TABLE_GRID_Y_STEP,
-      );
-      if (oldAutoLayout || compactAutoLayout) {
-        let index = 0;
-        compacted = compacted.map((table) =>
-          table.area === area
-            ? { ...table, ...tablePosition(index++, area) }
-            : table,
-        );
-      }
-    }
-    const counterTables = compacted.filter((table) => table.area === "counter");
-    const counterTablesUseOldGrid = counterTables.every(
-      (table, index) =>
-        (table.x === 38 && table.y === 42 + index * 105) ||
-        (table.x === 70 && table.y === 58 + index * 86),
-    );
-    const legacyCounterLayout =
-      new Set(counterTables.map((table) => table.y)).size < counterTables.length ||
-      counterTables.some((table) => table.x > 100) ||
-      counterTablesUseOldGrid;
-    if (legacyCounterLayout) {
-      let counterIndex = 0;
-      compacted = compacted.map((table) =>
-        table.area === "counter"
-          ? { ...table, ...tablePosition(counterIndex++, "counter") }
-          : table,
-      );
-    }
-    return normalizeCounterNumbers(compacted);
-  } catch {
-    return initialTables();
-  }
-};
-const loadInitialFloor = (): Table[] => {
-  const existing = loadTables().map((table) => ({
-    ...table,
-    items: table.items.map((line, index) => ({
-      ...line,
-      id: line.id || `legacy-${table.id}-${index}`,
-      note: typeof line.note === "string" ? line.note : "",
-    })),
-  }));
-  const seedKey = "carmela.pos.seed.128.v1";
-  if (localStorage.getItem(seedKey)) return existing;
-  const sectors = loadSectors();
-  const next = [...existing];
-  const usedNumbers = new Set(next.map((table) => Number(table.name.match(/\d+/)?.[0])).filter(Boolean));
-  let number = 1;
-  for (const area of ["salon", "patio", "counter"] as const) {
-    if (!sectors.some((sector) => sector.id === area)) continue;
-    const target = area === "counter" ? 5 : 64;
-    const count = next.filter((table) => table.area === area).length;
-    for (let index = count; index < target; index++) {
-      while (usedNumbers.has(number)) number++;
-      usedNumbers.add(number);
-      next.push({
-        id: `table-seed-${area}-${number}`,
-        name: `Mesa ${number}`,
-        guests: 2,
-        items: [],
-        discount: 0,
-        billRequested: false,
-        area,
-        ...tablePosition(index, area),
-      });
-      number++;
-    }
-  }
-  localStorage.setItem(KEY, JSON.stringify(next));
-  localStorage.setItem(seedKey, "1");
-  return next;
-};
-
 export default function TablePOS({
   products,
   categories,
   onToast,
-  onReorder,
 }: {
   products: Product[];
   categories: string[];
   onToast: (message: string) => void;
-  onReorder: (fromId: number, toId: number) => void;
 }) {
   const [tables, setTables] = useState<Table[]>(loadInitialFloor);
   const [sectors, setSectors] = useState<Sector[]>(loadSectors);
@@ -432,6 +94,7 @@ export default function TablePOS({
   const reducedMotion = useReducedMotion();
   const boardRef = useRef<HTMLDivElement>(null);
   const accountDialogRef = useRef<HTMLElement>(null);
+  const [categoryContainer, setCategoryContainer] = useState<HTMLDivElement | null>(null);
   const [boardHeight, setBoardHeight] = useState(400);
   const sectorDragRef = useRef<{ id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout; lastLayout: SectorLayout; boardWidth: number; moved: boolean } | null>(null);
   const resizeRef = useRef<{ id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout; boardWidth: number; edge: -1 | 1; moved: boolean } | null>(null);
@@ -456,20 +119,19 @@ export default function TablePOS({
   const [pinPurpose, setPinPurpose] = useState<PinPurpose>("enter");
   const [layoutMode, setLayoutMode] = useState(false);
   const [counterHovered, setCounterHovered] = useState(false);
+  const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [activeArea, setActiveArea] = useState<Area>("salon");
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("Todos");
-  const [payment, setPayment] = useState<"" | "Efectivo" | "Tarjeta" | "Transferencia">("");
+  const [payment, setPayment] = useState<PaymentMethod>("");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const paymentDialogRef = useRef<HTMLElement>(null);
   const [editing, setEditing] = useState(false);
-  const [sortingProducts, setSortingProducts] = useState(false);
-  const [draggingProduct, setDraggingProduct] = useState<number | null>(null);
   const [lineEditorId, setLineEditorId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [confirmClearTable, setConfirmClearTable] = useState(false);
   const [lineNoteDraft, setLineNoteDraft] = useState("");
+  const [linePriceDraft, setLinePriceDraft] = useState("");
+  const [lineDiscountDraft, setLineDiscountDraft] = useState("");
   const [lineQuantityDraft, setLineQuantityDraft] = useState(1);
   const [lineEditorMode, setLineEditorMode] = useState<"note" | "move">("note");
   const [moveTargetId, setMoveTargetId] = useState("");
@@ -496,9 +158,7 @@ export default function TablePOS({
   const displayTableNumber = (table: Table) =>
     displayTableName(table).match(/\d+/)?.[0] || displayTableName(table);
   const areaCounts = Object.fromEntries(sectors.map((area) => [area.id, tables.filter((table) => table.area === area.id).length]));
-  const freeCounterTables = tables.filter(
-    (table) => table.area === "counter" && !table.items.length && !table.billRequested,
-  );
+  const canOpenCounter = sectors.some((sector) => sector.id === "counter") && (areaCounts.counter || 0) < COUNTER_LIMIT;
   const floorCapacity = sectors.reduce((sum, sector) => sum + sector.limit, 0);
   const isFreeform = sectors.every((sector) => Boolean(sector.layout));
   const sectorsRef = useRef(sectors);
@@ -610,7 +270,7 @@ export default function TablePOS({
         };
         let salonHeight = requiredHeight("salon");
         let patioHeight = requiredHeight("patio");
-        const extraHeight = Math.max(0, minimumBoardHeight - salonHeight - patioHeight - SECTOR_GAP);
+        const extraHeight = Math.max(0, Math.max(minimumBoardHeight, requiredHeight("counter")) - salonHeight - patioHeight - SECTOR_GAP);
         salonHeight += Math.floor(extraHeight / 2);
         patioHeight += Math.ceil(extraHeight / 2);
         const patioY = salon.layout.y + salonHeight + SECTOR_GAP;
@@ -643,24 +303,57 @@ export default function TablePOS({
     return () => observer.disconnect();
   }, [sectors.length, isFreeform]);
   const openNextCounter = () => {
-    const nextTable = freeCounterTables[0];
-    if (!nextTable) return;
+    if (!canOpenCounter) return;
+    const nextTable = makeCounterTable(tables);
+    setTables((current) => [...current, nextTable]);
     setSelectedId(nextTable.id);
     setTeamOptions(loadTeamMembers().filter((member) => member.active));
     setOperator(null);
     setEmployeePickerOpen(true);
-    setQuery("");
-    setCategory("Todos");
   };
   useEffect(() => localStorage.setItem(KEY, JSON.stringify(tables)), [tables]);
   useEffect(() => localStorage.setItem(SECTORS_KEY, JSON.stringify(sectors)), [sectors]);
+  useEffect(() => {
+    const trackPointer = (event: PointerEvent) => {
+      if (event.pointerType === "mouse") pointerPositionRef.current = { x: event.clientX, y: event.clientY };
+    };
+    const leaveWindow = () => { pointerPositionRef.current = null; setCounterHovered(false); };
+    document.addEventListener("pointermove", trackPointer, true);
+    document.addEventListener("mouseleave", leaveWindow);
+    return () => {
+      document.removeEventListener("pointermove", trackPointer, true);
+      document.removeEventListener("mouseleave", leaveWindow);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (accountOpen || employeePickerOpen || coversOpen || exitPinOpen || layoutMode) return;
+    const syncCounterHover = () => {
+      const point = pointerPositionRef.current;
+      const counter = boardRef.current?.querySelector<HTMLElement>('[data-sector-id="counter"]');
+      if (!counter) { setCounterHovered(false); return; }
+      if (!point) { setCounterHovered(counter.matches(":hover")); return; }
+      const rect = counter.getBoundingClientRect();
+      setCounterHovered(point.x >= 0 && point.y >= 0 && point.x < window.innerWidth && point.y < window.innerHeight &&
+        point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom);
+    };
+    syncCounterHover();
+    // El bloqueo de la página restaura el scroll después de la salida del modal.
+    const timer = window.setTimeout(syncCounterHover, 270);
+    window.addEventListener("scroll", syncCounterHover, true);
+    window.addEventListener("resize", syncCounterHover);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("scroll", syncCounterHover, true);
+      window.removeEventListener("resize", syncCounterHover);
+    };
+  }, [accountOpen, employeePickerOpen, coversOpen, exitPinOpen, layoutMode, sectors]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.key !== "Enter" ||
         !counterHovered ||
         layoutMode ||
-        !freeCounterTables.length ||
+        !canOpenCounter ||
         accountOpen ||
         employeePickerOpen ||
         coversOpen ||
@@ -680,7 +373,7 @@ export default function TablePOS({
     coversOpen,
     employeePickerOpen,
     exitPinOpen,
-    freeCounterTables,
+    canOpenCounter,
     layoutMode,
   ]);
   useLayoutEffect(() => {
@@ -734,19 +427,7 @@ export default function TablePOS({
         setEmployeePickerOpen(true);
       }
       else if (employeePickerOpen) cancelEmployeeSelection();
-      else if (accountOpen) {
-        if (selected?.items.length && !selected.operatorId && operator) {
-          setExitPin("");
-          setExitPinError("");
-          setPinPurpose("confirm-command");
-          setExitPinOpen(true);
-        } else {
-          if (selected?.area === "counter" && !selected.items.length)
-            update((table) => ({ ...table, counterTurnNumber: undefined }));
-          setAccountOpen(false);
-          setOperator(null);
-        }
-      }
+      else if (accountOpen) requestAccountClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -815,16 +496,6 @@ export default function TablePOS({
     setTables((current) =>
       current.map((table) => (table.id === selectedId ? change(table) : table)),
     );
-  const available = useMemo(
-    () =>
-      products.filter(
-        (product) =>
-          product.available &&
-          (category === "Todos" || product.category === category) &&
-          product.name.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [products, category, query],
-  );
   const lines = (selected?.items || [])
     .map((line) => ({
       line,
@@ -836,7 +507,9 @@ export default function TablePOS({
   const editorProduct = editorLine && products.find((product) => product.id === editorLine.productId);
   const selectedLine = selected?.items.find((line) => line.id === selectedLineId);
   const moveWholeTable = lineEditorId === "__move_table__";
-  const moveTarget = tables.find((table) => table.id === moveTargetId && table.id !== selectedId);
+  const moveTarget = moveTargetId === NEW_COUNTER_TARGET && canOpenCounter
+    ? makeCounterTable(tables, NEW_COUNTER_TARGET)
+    : tables.find((table) => table.id === moveTargetId && table.id !== selectedId);
   const destinationOwner = moveTarget?.items.length
     ? moveTarget.operatorId
       ? loadTeamMembers().find((member) => member.id === moveTarget.operatorId)
@@ -845,7 +518,7 @@ export default function TablePOS({
   const sourceNeedsMovePin = Boolean(selected && !selected.operatorId);
   const destinationNeedsMovePin = Boolean(moveTarget?.items.length && destinationOwner && destinationOwner.id !== operator?.id);
   const subtotal = lines.reduce(
-    (sum, { line, product }) => sum + line.quantity * product.price,
+    (sum, { line, product }) => sum + line.quantity * lineUnitPrice(line, product.price),
     0,
   );
   const discount = Math.min(selected?.discount || 0, subtotal);
@@ -854,8 +527,7 @@ export default function TablePOS({
     const tableSubtotal = table.items.reduce(
       (sum, line) =>
         sum +
-        (products.find((product) => product.id === line.productId)?.price ||
-          0) *
+        lineUnitPrice(line, products.find((product) => product.id === line.productId)?.price || 0) *
           line.quantity,
       0,
     );
@@ -879,8 +551,6 @@ export default function TablePOS({
       } else {
         setEmployeePickerOpen(true);
       }
-      setQuery("");
-      setCategory("Todos");
     }
   };
   const chooseOperator = (member: TeamMember) => {
@@ -915,7 +585,9 @@ export default function TablePOS({
     onToast(`${member.name} quedó a cargo de ${selected ? displayTableName(selected) : "la mesa"}.`);
   };
   const cancelEmployeeSelection = () => {
+    if (selected?.area === "counter" && !selected.items.length) setTables((current) => current.filter((table) => table.id !== selected.id));
     setEmployeePickerOpen(false);
+    setSelectedId(null);
   };
   const cancelOperatorPin = () => {
     if (pinPurpose === "transfer") {
@@ -959,7 +631,7 @@ export default function TablePOS({
       return;
     }
     if (selected?.area === "counter" && !selected.items.length)
-      update((table) => ({ ...table, counterTurnNumber: undefined }));
+      setTables((current) => current.filter((table) => table.id !== selected.id));
     setAccountOpen(false);
     setOperator(null);
   };
@@ -1025,7 +697,7 @@ export default function TablePOS({
       ...(counterTurnNumber ? { counterTurnNumber } : {}),
       billRequested: false,
       items: (() => {
-        const existing = table.items.find((line) => line.productId === productId && !line.note);
+        const existing = table.items.find((line) => line.productId === productId && !line.note && line.unitPrice === undefined && !line.unitDiscount);
         return existing
           ? table.items.map((line) => line.id === existing.id ? { ...line, quantity: line.quantity + 1 } : line)
           : [...table.items, { id: lineId, productId, quantity: 1, note: "" }];
@@ -1041,7 +713,7 @@ export default function TablePOS({
             : line,
         )
         .filter((line) => line.quantity > 0);
-      const remaining = items.reduce((sum, line) => sum + line.quantity * (products.find((product) => product.id === line.productId)?.price || 0), 0);
+      const remaining = items.reduce((sum, line) => sum + line.quantity * lineUnitPrice(line, products.find((product) => product.id === line.productId)?.price || 0), 0);
       return {
         ...table,
         billRequested: false,
@@ -1056,6 +728,8 @@ export default function TablePOS({
     setSelectedLineId(line.id);
     setLineEditorId(line.id);
     setLineNoteDraft(line.note || "");
+    setLinePriceDraft(String(line.unitPrice ?? products.find((product) => product.id === line.productId)?.price ?? 0));
+    setLineDiscountDraft(line.unitDiscount ? String(line.unitDiscount) : "");
     setLineQuantityDraft(1);
     setLineEditorMode(mode);
     setMoveTargetId("");
@@ -1078,17 +752,21 @@ export default function TablePOS({
     setMoveError("");
   };
   const saveLineNote = () => {
-    if (!editorLine) return;
+    if (!editorLine || !editorProduct) return;
     const note = lineNoteDraft.trim();
+    const unitPrice = linePriceDraft === "" || (editorLine.unitPrice === undefined && Number(linePriceDraft) === editorProduct.price) ? undefined : Number(linePriceDraft);
+    const unitDiscount = lineDiscountDraft === "" ? 0 : Number(lineDiscountDraft);
+    if ((unitPrice !== undefined && (!Number.isFinite(unitPrice) || unitPrice < 0)) || !Number.isFinite(unitDiscount) || unitDiscount < 0 || unitDiscount > (unitPrice ?? editorProduct.price)) return;
+    const changed = note !== (editorLine.note || "") || unitPrice !== editorLine.unitPrice || unitDiscount !== (editorLine.unitDiscount || 0);
     const quantity = Math.min(editorLine.quantity, Math.max(1, Math.floor(lineQuantityDraft) || 1));
     const splitId = newLineId();
     update((table) => ({
       ...table,
-      billRequested: note === (editorLine.note || "") ? table.billRequested : false,
+      billRequested: changed ? false : table.billRequested,
       items: table.items.flatMap((line) => {
-        if (line.id !== editorLine.id || note === (line.note || "")) return [line];
-        if (quantity >= line.quantity) return [{ ...line, note }];
-        return [{ ...line, quantity: line.quantity - quantity }, { ...line, id: splitId, quantity, note }];
+        if (line.id !== editorLine.id || !changed) return [line];
+        if (quantity >= line.quantity) return [{ ...line, note, unitPrice, unitDiscount }];
+        return [{ ...line, quantity: line.quantity - quantity }, { ...line, id: splitId, quantity, note, unitPrice, unitDiscount }];
       }),
     }));
     setLineEditorId(null);
@@ -1110,17 +788,20 @@ export default function TablePOS({
     const counterNumber = moveTarget.area === "counter" && !moveTarget.items.length && !moveTarget.counterTurnNumber
       ? allocateCounterTableNumber(tables.filter((table) => table.area === "counter").map((table) => table.counterTurnNumber || 0))
       : moveTarget.counterTurnNumber;
+    const newCounter = moveTarget.id === NEW_COUNTER_TARGET ? { ...moveTarget, id: makeCounterTable(tables).id } : null;
+    const destinationId = newCounter?.id || moveTarget.id;
     if (moveWholeTable) {
-      setTables((current) => current.map((table) => {
+      setTables((current) => (newCounter ? [...current, newCounter] : current).flatMap((table) => {
+        if (table.id === selected.id && table.area === "counter") return [];
         if (table.id === selected.id) return { ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined };
-        if (table.id !== moveTarget.id) return table;
+        if (table.id !== destinationId) return table;
         const items = table.items.map((line) => ({ ...line }));
         for (const line of selected.items) {
-          const existing = items.find((item) => item.productId === line.productId && (item.note || "") === (line.note || ""));
+          const existing = items.find((item) => item.productId === line.productId && (item.note || "") === (line.note || "") && sameLinePrice(item, line));
           if (existing) existing.quantity += line.quantity;
           else items.push({ ...line });
         }
-        const destinationSubtotal = table.items.reduce((sum, line) => sum + line.quantity * (products.find((product) => product.id === line.productId)?.price || 0), 0);
+        const destinationSubtotal = table.items.reduce((sum, line) => sum + line.quantity * lineUnitPrice(line, products.find((product) => product.id === line.productId)?.price || 0), 0);
         return { ...table, items, discount: Math.min(table.discount, destinationSubtotal) + discount,
           billRequested: false, operatorId: table.operatorId || destinationOwner?.id || operator.id,
           guests: table.items.length ? table.guests + selected.guests : selected.guests, counterTurnNumber: counterNumber };
@@ -1136,17 +817,17 @@ export default function TablePOS({
     const quantity = Math.min(editorLine.quantity, Math.max(1, Math.floor(lineQuantityDraft) || 1));
     const movedId = newLineId();
     const movedNote = lineNoteDraft.trim();
-    setTables((current) => current.map((table) => {
+    setTables((current) => (newCounter ? [...current, newCounter] : current).map((table) => {
       if (table.id === selected.id) {
         const items = table.items.flatMap((line) => line.id !== editorLine.id ? [line]
           : line.quantity > quantity ? [{ ...line, quantity: line.quantity - quantity }] : []);
-        const remaining = items.reduce((sum, line) => sum + line.quantity * (products.find((product) => product.id === line.productId)?.price || 0), 0);
+        const remaining = items.reduce((sum, line) => sum + line.quantity * lineUnitPrice(line, products.find((product) => product.id === line.productId)?.price || 0), 0);
         return { ...table, items, discount: Math.min(table.discount, remaining), billRequested: false,
           operatorId: items.length ? table.operatorId || operator.id : undefined,
           counterTurnNumber: items.length ? table.counterTurnNumber : undefined };
       }
-      if (table.id !== moveTarget.id) return table;
-      const matching = table.items.find((line) => line.productId === editorLine.productId && (line.note || "") === movedNote);
+      if (table.id !== destinationId) return table;
+      const matching = table.items.find((line) => line.productId === editorLine.productId && (line.note || "") === movedNote && sameLinePrice(line, editorLine));
       const items = matching
         ? table.items.map((line) => line.id === matching.id ? { ...line, quantity: line.quantity + quantity } : line)
         : [...table.items, { ...editorLine, id: movedId, quantity, note: movedNote }];
@@ -1158,16 +839,10 @@ export default function TablePOS({
       ? `Mesa ${counterNumber} de Mostrador` : displayTableName(moveTarget);
     onToast(`${quantity} ${quantity === 1 ? "artículo movido" : "artículos movidos"} a ${destinationName}.`);
   };
-  const moveCatalogProduct = (
-    productId: number,
-    index: number,
-    direction: -1 | 1,
-  ) => {
-    const target = available[index + direction];
-    if (target) onReorder(productId, target.id);
-  };
   const openAddTables = (area = activeArea) => {
-    setAddArea(area);
+    const target = area === "counter" ? sectors.find((sector) => sector.id !== "counter")?.id : area;
+    if (!target) { onToast("Agregá un sector para crear mesas."); return; }
+    setAddArea(target);
     setAddCount(1);
     setAddingTables(true);
     setLayoutMode(true);
@@ -1232,6 +907,7 @@ export default function TablePOS({
   };
   const moveSelectedArea = (area: Area) => {
     if (!selected || selected.area === area) return;
+    if (selected.area === "counter" || area === "counter") { onToast("Usá mover cuenta para trasladar consumos desde o hacia Mostrador."); return; }
     const target = sectors.find((item) => item.id === area)!;
     const targetCount = tables.filter((table) => table.area === area).length;
     if (targetCount >= target.limit) {
@@ -1443,6 +1119,7 @@ export default function TablePOS({
     if (!sector) return;
     const original = tables.find((table) => table.id === id);
     if (!original) return;
+    if (original.area !== area && (original.area === "counter" || area === "counter")) { onToast("Usá mover cuenta para trasladar consumos desde o hacia Mostrador."); setDraggedTableId(null); setDropTarget(null); return; }
     if (original.area !== area && areaCounts[area] >= sector.limit) {
       onToast(`${sector.label} ya tiene ${sector.limit} mesas.`);
       setDraggedTableId(null);
@@ -1526,11 +1203,11 @@ export default function TablePOS({
     onToast(`${sector.label} eliminado del plano.`);
   };
   const closeSale = () => {
-    if (!selected || !total || !payment) return;
+    if (!selected || !selected.items.length || !payment) return;
     const name = displayTableName(selected);
     const closedAt = new Date().toISOString();
     const subtotalAmount = lines.reduce(
-      (sum, { line, product }) => sum + line.quantity * product.price,
+      (sum, { line, product }) => sum + line.quantity * lineUnitPrice(line, product.price),
       0,
     );
     saveSale({
@@ -1547,11 +1224,12 @@ export default function TablePOS({
         name: product.name,
         category: product.category,
         quantity: line.quantity,
-        unitPrice: product.price,
+        unitPrice: lineUnitPrice(line, product.price),
         ...(line.note ? { note: line.note } : {}),
       })),
     });
-    update((table) => ({
+    if (selected.area === "counter") setTables((current) => current.filter((table) => table.id !== selected.id));
+    else update((table) => ({
       ...table,
       items: [],
       discount: 0,
@@ -1564,7 +1242,7 @@ export default function TablePOS({
     onToast(`${name} cobrada y cerrada por ${money(total)} · ${payment}.`);
   };
   const confirmPayment = () => {
-    if (!selected || !total || !payment) return;
+    if (!selected || !selected.items.length || !payment) return;
     setPaymentOpen(false);
     if (!selected.operatorId && operator) {
       setExitPin("");
@@ -1592,16 +1270,58 @@ export default function TablePOS({
   return (
     <div className="floor-manager">
       <section className="panel floor-toolbar">
-        <div>
-          <span className="eyebrow">SECTORES</span>
-          <h2>Plano de mesas</h2>
-          <p>
-            {tables.filter((table) => table.items.length).length} abiertas ·{" "}
-            {tables.length} de {floorCapacity} lugares · {sectors.length} sectores
-          </p>
+        <div className="floor-toolbar-main">
+          <div className="floor-toolbar-heading">
+            <span className="eyebrow">SECTORES</span>
+            <h2>Plano de mesas</h2>
+            <p>
+              {tables.filter((table) => table.items.length).length} abiertas ·{" "}
+              {tables.length} de {floorCapacity} lugares · {sectors.length} sectores
+            </p>
+          </div>
+          <div className="floor-actions">
+            <button className="button" onClick={() => openAddTables()}>
+              <Plus size={16} /> Agregar mesa
+            </button>
+            <button
+              className={layoutMode ? "button primary" : "button"}
+              aria-pressed={layoutMode}
+              onClick={() => {
+                setLayoutMode((value) => !value);
+                setSelectedId(null);
+                setSelectingTables(false);
+                setSelectedTableIds([]);
+                setConfirmDeleteTables(false);
+                setAddingTables(false);
+                setAddingSector(false);
+              }}
+            >
+              <Grid2X2 size={16} />
+              {layoutMode ? "Terminar edición" : "Editar plano"}
+            </button>
+          </div>
         </div>
-        <div className="floor-actions">
-          {layoutMode && sectors.length === 3 && ["salon", "patio", "counter"].every((id) => sectors.some((sector) => sector.id === id)) && (
+        {layoutMode && <div className="floor-edit-tools" role="group" aria-label="Herramientas de edición del plano">
+          <div className="floor-edit-group">
+            <span className="floor-edit-label">Mesas</span>
+            <button className={selectingTables ? "button floor-selection-active" : "button"} aria-pressed={selectingTables} onClick={() => {
+              setSelectingTables((value) => !value);
+              setSelectedTableIds([]);
+              setConfirmDeleteTables(false);
+            }}><Check size={16} /> {selectingTables ? "Cancelar selección" : "Seleccionar mesas"}</button>
+            {selectingTables && <span className="floor-selection-count" aria-live="polite">{selectedTableIds.length} {selectedTableIds.length === 1 ? "seleccionada" : "seleccionadas"}</span>}
+            {selectedTableIds.length > 0 && <button className="button danger-button" onClick={() => setConfirmDeleteTables(true)}>
+              <Trash2 size={15} /> Eliminar ({selectedTableIds.length})
+            </button>}
+          </div>
+          <div className="floor-edit-group">
+            <span className="floor-edit-label">Sectores</span>
+            <button className="button" onClick={() => setAddingSector(true)}><Plus size={16} /> Agregar sector</button>
+          </div>
+          <div className="floor-edit-group">
+            <span className="floor-edit-label">Distribución</span>
+            <button className="button" onClick={() => arrangeTables()}><LayoutGrid size={16} /> Alinear todas</button>
+            {sectors.length === 3 && ["salon", "patio", "counter"].every((id) => sectors.some((sector) => sector.id === id)) && (
             <button className="button" onClick={() => {
               const width = boardRef.current?.clientWidth;
               if (!width) return;
@@ -1613,41 +1333,9 @@ export default function TablePOS({
               normalizedLayoutRef.current = true;
               onToast("Distribución inicial aplicada.");
             }}><RotateCcw size={16} /> Restablecer distribución</button>
-          )}
-          {layoutMode && <button className={selectingTables ? "button primary" : "button"} aria-pressed={selectingTables} onClick={() => {
-            setSelectingTables((value) => !value);
-            setSelectedTableIds([]);
-            setConfirmDeleteTables(false);
-          }}><Check size={16} /> {selectingTables ? "Cancelar selección" : "Seleccionar mesas"}</button>}
-          {layoutMode && selectedTableIds.length > 0 && <button className="button danger-button" onClick={() => setConfirmDeleteTables(true)}>
-            <Trash2 size={15} /> Eliminar ({selectedTableIds.length})
-          </button>}
-          {layoutMode && (
-            <button className="button" onClick={() => arrangeTables()}>
-              <LayoutGrid size={16} /> Alinear todas
-            </button>
-          )}
-          {layoutMode && <button className="button" onClick={() => setAddingSector(true)}><Plus size={16} /> Agregar sector</button>}
-          <button className="button" onClick={() => openAddTables()}>
-            <Plus size={16} /> Agregar mesa
-          </button>
-          <button
-            className={layoutMode ? "button primary" : "button"}
-            aria-pressed={layoutMode}
-            onClick={() => {
-              setLayoutMode((value) => !value);
-              setSelectedId(null);
-              setSelectingTables(false);
-              setSelectedTableIds([]);
-              setConfirmDeleteTables(false);
-              setAddingTables(false);
-              setAddingSector(false);
-            }}
-          >
-            <Grid2X2 size={16} />
-            {layoutMode ? "Terminar edición" : "Editar plano"}
-          </button>
-        </div>
+            )}
+          </div>
+        </div>}
       </section>
       {layoutMode && (
         <motion.div
@@ -1657,7 +1345,7 @@ export default function TablePOS({
           animate="visible"
         >
           <span>
-            Arrastrá mesas para ubicarlas en la cuadrícula. Arrastrá sectores desde el encabezado y cambiá su tamaño desde las esquinas.
+            {selectingTables ? "Seleccioná las mesas que querés eliminar." : "Arrastrá las mesas o los sectores para acomodarlos. Cambiá el tamaño de cada sector desde sus esquinas."}
           </span>
           <strong>Los cambios se guardan automáticamente.</strong>
         </motion.div>
@@ -1665,7 +1353,7 @@ export default function TablePOS({
       {addingSector && <div className="panel sector-create"><label htmlFor="new-sector-name">Nombre del sector</label><input id="new-sector-name" autoFocus maxLength={32} value={sectorName} onChange={(event) => setSectorName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSector(); if (event.key === "Escape") setAddingSector(false); }} placeholder="Ej. Terraza" /><button className="button primary" onClick={createSector} disabled={!sectorName.trim()}>Crear sector</button><button className="button" onClick={() => setAddingSector(false)}>Cancelar</button></div>}
       {addingTables && <div className="panel table-add-panel">
         <div><strong>Agregar mesas</strong><small>Elegí el sector y cuántas mesas querés crear.</small></div>
-        <label>Sector<select value={addArea} onChange={(event) => { setAddArea(event.target.value); setAddCount(1); }}>{sectors.map((area) => <option key={area.id} value={area.id}>{area.label} · {area.limit - areaCounts[area.id]} libres</option>)}</select></label>
+        <label>Sector<select value={addArea} onChange={(event) => { setAddArea(event.target.value); setAddCount(1); }}>{sectors.filter((area) => area.id !== "counter").map((area) => <option key={area.id} value={area.id}>{area.label} · {area.limit - areaCounts[area.id]} libres</option>)}</select></label>
         <label>Cantidad<input type="number" min={1} max={Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0))} value={addCount} onChange={(event) => setAddCount(Math.min(Math.max(1, (sectors.find((area) => area.id === addArea)?.limit || 0) - (areaCounts[addArea] || 0)), Math.max(1, Math.floor(Number(event.target.value) || 1))))} onKeyDown={(event) => { if (event.key === "Enter") createTables(); if (event.key === "Escape") setAddingTables(false); }} /></label>
         <button className="button primary" onClick={createTables} disabled={(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0)}>Agregar</button>
         <button className="button" onClick={() => setAddingTables(false)}>Cancelar</button>
@@ -1681,13 +1369,13 @@ export default function TablePOS({
           <AnimatePresence initial={false}>
           {sectors.map((area) => {
             const occupied = tables.filter((table) => table.area === area.id && table.items.length).length;
-            const areaTables = tables.filter((table) => table.area === area.id && (area.id !== "counter" || layoutMode || table.items.length || table.billRequested));
+            const areaTables = tables.filter((table) => table.area === area.id && (area.id !== "counter" || table.items.length || table.billRequested));
             const sectorStyle = isFreeform && area.layout
               ? { "--free-x": `${area.layout.x * 100}%`, "--free-y": `${area.layout.y}px`, "--free-width": `${area.layout.width * 100}%`, "--free-height": `${area.layout.height}px` }
               : { "--sector-columns": area.columns, "--sector-start": area.start, "--sector-min-height": `${area.minHeight}px` };
             return <motion.section key={area.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !reducedMotion} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ ...transitions.fast, layout: transitions.base }} data-sector-id={area.id} className={`floor-sector${area.autoFit ? " auto-fit" : ""}${activeArea === area.id && layoutMode ? " current" : ""}${area.id === "counter" && counterHovered ? " hovered" : ""}${layoutMode ? " editing" : ""}${draggingSectorId === area.id ? " dragging" : ""}${resizingSectorId === area.id ? " resizing" : ""}`}
               style={sectorStyle as CSSProperties}
-              onMouseEnter={() => { if (area.id === "counter") setCounterHovered(true); }}
+              onMouseEnter={(event) => { if (area.id === "counter") { pointerPositionRef.current = { x: event.clientX, y: event.clientY }; setCounterHovered(true); } }}
               onMouseLeave={() => { if (area.id === "counter") setCounterHovered(false); }}
               onDragOver={(event) => { if (layoutMode && draggedTableId) {
                 event.preventDefault();
@@ -1700,14 +1388,14 @@ export default function TablePOS({
                 <button className="floor-sector-title" title={layoutMode ? `Arrastrar ${area.label} libremente` : undefined} onPointerDown={(event) => startSectorDrag(event, area)} onPointerMove={moveSectorDrag} onPointerUp={finishSectorDrag} onPointerCancel={finishSectorDrag} onKeyDown={(event) => moveSectorWithKeyboard(event, area)} onClick={() => { if (suppressSectorClick.current) { suppressSectorClick.current = false; return; } setActiveArea(area.id); setSelectedId(null); }} aria-pressed={activeArea === area.id}>
                   {layoutMode && <GripVertical size={16} className="sector-grip" aria-hidden="true" />}
                   <span><strong>{area.label}</strong><small>{area.description}</small></span>
-                  {area.id === "counter" && counterHovered && !layoutMode && freeCounterTables.length > 0 && <kbd className="floor-enter-hint">↵ Enter para abrir</kbd>}
-                  <b>{occupied ? `${occupied} abiertas · ` : ""}{areaCounts[area.id]}/{area.limit}</b>
+                  <b>{area.id === "counter" ? `${occupied}/${area.limit} abiertas` : `${occupied ? `${occupied} abiertas · ` : ""}${areaCounts[area.id]}/${area.limit}`}</b>
                 </button>
                 {layoutMode && <div className="sector-controls">
                   <button title={`Alinear mesas de ${area.label}`} aria-label={`Alinear mesas de ${area.label}`} onClick={() => arrangeTables(area.id)}><LayoutGrid size={14}/></button>
                   <button title={`Eliminar ${area.label}`} aria-label={`Eliminar ${area.label}`} onClick={() => deleteSector(area)}><Trash2 size={14}/></button>
                 </div>}
               </div>
+              {area.id === "counter" && counterHovered && !layoutMode && canOpenCounter && <kbd className="floor-enter-hint">↵ Enter para abrir</kbd>}
               <div className="floor-sector-tables" style={{ "--table-columns": tableColumns[area.id] || 1 } as CSSProperties}>
                 <AnimatePresence initial={false}>
                 {areaTables.map((table, index) => {
@@ -1738,8 +1426,8 @@ export default function TablePOS({
                 })}
                 </AnimatePresence>
                 {layoutMode && draggedTableId && dropTarget?.area === area.id && !areaTables.some((table, index) => (table.slot ?? index) === dropTarget.slot) && <div className="floor-drop-slot" style={{ gridColumn: dropTarget.slot % (tableColumns[area.id] || 1) + 1, gridRow: Math.floor(dropTarget.slot / (tableColumns[area.id] || 1)) + 1 }} />}
-                {!areaTables.length && (area.id !== "counter" || layoutMode) && <div className="floor-sector-empty">Sin mesas en este sector</div>}
-                {area.id === "counter" && !layoutMode && freeCounterTables.length > 0 && <button className="floor-counter-open" onClick={openNextCounter}>Abrir mesa</button>}
+                {!areaTables.length && area.id !== "counter" && <div className="floor-sector-empty">Sin mesas en este sector</div>}
+                {area.id === "counter" && !layoutMode && canOpenCounter && <button className="floor-counter-open" onClick={openNextCounter}>Abrir mesa</button>}
               </div>
               {layoutMode && <>
                 <button className="sector-resize-handle left" aria-label={`Cambiar tamaño de ${area.label} desde la izquierda`} title="Arrastrar para cambiar el ancho y alto" onPointerDown={(event) => startSectorResize(event, area, -1)} onPointerMove={moveSectorResize} onPointerUp={finishSectorResize} onPointerCancel={finishSectorResize} onKeyDown={(event) => resizeSectorWithKeyboard(event, area)}><span aria-hidden="true" /></button>
@@ -1752,150 +1440,24 @@ export default function TablePOS({
       </section>
       <AnimatePresence>
         {employeePickerOpen && selected && (
-          <motion.div
-            className="modal-scrim account-scrim"
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            onClick={cancelEmployeeSelection}
-          >
-            <motion.section
-              className="acrylic-modal operator-modal"
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="operator-title"
-            >
-              <button
-                className="modal-close"
-                aria-label="Cancelar selección de empleado"
-                onClick={cancelEmployeeSelection}
-              >
-                <X size={19} />
-              </button>
-              <header className="operator-heading">
-                <span className="eyebrow">{displayTableName(selected).toUpperCase()}</span>
-                <h2 id="operator-title">¿Quién va a gestionar esta mesa?</h2>
-                <p>Elegí un empleado para identificar la comanda.</p>
-              </header>
-              <div className="operator-list">
-                {teamOptions.map((member) => {
-                  const initials = member.name
-                    .split(" ")
-                    .slice(0, 2)
-                    .map((part) => part[0])
-                    .join("")
-                    .toUpperCase();
-                  return (
-                    <motion.button
-                      whileTap={press}
-                      aria-label={`Trabajar como ${member.name}`}
-                      onClick={() => chooseOperator(member)}
-                      key={member.id}
-                    >
-                      <span className="operator-avatar">{initials}</span>
-                      <span>
-                        <strong>{member.name}</strong>
-                        <small>{member.role}</small>
-                      </span>
-                      <em className={member.clockedIn ? "on-shift" : "off-shift"}>
-                        {member.clockedIn ? "En turno" : "Fuera de turno"}
-                      </em>
-                    </motion.button>
-                  );
-                })}
-                {!teamOptions.length && (
-                  <div className="operator-empty">
-                    <UserRound size={23} />
-                    <strong>No hay empleados activos</strong>
-                    <p>Creá o activá un usuario desde la sección Equipo.</p>
-                  </div>
-                )}
-              </div>
-            </motion.section>
-          </motion.div>
+          <EmployeePickerDialog
+            tableName={displayTableName(selected)}
+            members={teamOptions}
+            onChoose={chooseOperator}
+            onClose={cancelEmployeeSelection}
+          />
         )}
       </AnimatePresence>
       <AnimatePresence>
         {coversOpen && selected && operator && (
-          <motion.div
-            className="modal-scrim account-scrim"
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            onClick={returnToEmployeePicker}
-          >
-            <motion.section
-              className="acrylic-modal operator-modal covers-modal"
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="covers-title"
-            >
-              <button
-                className="modal-close"
-                aria-label="Volver a elegir empleado"
-                onClick={returnToEmployeePicker}
-              >
-                <X size={19} />
-              </button>
-              <header className="operator-heading">
-                <span className="eyebrow">{displayTableName(selected).toUpperCase()}</span>
-                <h2 id="covers-title">¿Cuántos cubiertos?</h2>
-                <p>Indicá cuántas personas se sientan en la mesa.</p>
-              </header>
-              <div className="covers-operator">
-                <span className="operator-avatar">
-                  {operator.name.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
-                </span>
-                <span><strong>{operator.name}</strong><small>{operator.role}</small></span>
-              </div>
-              <div className="covers-stepper">
-                <button
-                  type="button"
-                  aria-label="Restar un cubierto"
-                  disabled={coversDraft <= 1}
-                  onClick={() => setCoversDraft((value) => Math.max(1, value - 1))}
-                >
-                  <Minus size={18} />
-                </button>
-                <label>
-                  <input
-                    autoFocus
-                    aria-label="Cantidad de cubiertos"
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={coversDraft}
-                    onChange={(event) => setCoversDraft(Math.min(20, Math.max(1, Number(event.target.value) || 1)))}
-                  />
-                  <span>{coversDraft === 1 ? "persona" : "personas"}</span>
-                </label>
-                <button
-                  type="button"
-                  aria-label="Sumar un cubierto"
-                  disabled={coversDraft >= 20}
-                  onClick={() => setCoversDraft((value) => Math.min(20, value + 1))}
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-              <div className="covers-modal-actions">
-                <button className="button" onClick={returnToEmployeePicker}>Volver</button>
-                <button className="button primary" onClick={confirmCovers}>Abrir mesa</button>
-              </div>
-            </motion.section>
-          </motion.div>
+          <CoversDialog
+            tableName={displayTableName(selected)}
+            operator={operator}
+            covers={coversDraft}
+            onCoversChange={setCoversDraft}
+            onBack={returnToEmployeePicker}
+            onConfirm={confirmCovers}
+          />
         )}
       </AnimatePresence>
       <AnimatePresence>
@@ -1932,6 +1494,14 @@ export default function TablePOS({
                 <div className="account-heading-content">
                   <div className="account-heading-title">
                     <h2>{displayTableName(selected)}</h2>
+                    <button
+                      type="button"
+                      className="icon-btn account-edit-button"
+                      aria-label="Editar mesa"
+                      onClick={() => setEditing(true)}
+                    >
+                      <Pencil size={16} />
+                    </button>
                     {selected.billRequested && <span className="account-heading-status">Cuenta solicitada</span>}
                   </div>
                   <div className="account-heading-meta">
@@ -1960,280 +1530,30 @@ export default function TablePOS({
                     )}
                   </div>
                 </div>
-                <button
-                  className="icon-btn"
-                  aria-label="Editar mesa"
-                  onClick={() => setEditing(true)}
-                >
-                  <Pencil size={16} />
-                </button>
+                <div className="account-heading-categories" ref={setCategoryContainer} />
               </header>
               <div className="account-body">
-                <section className="account-catalog">
-                  <div className="account-catalog-tools">
-                    <span><strong>Productos</strong> · {available.length} disponibles</span>
-                    <button
-                      className={
-                        sortingProducts ? "text-btn active" : "text-btn"
-                      }
-                      onClick={() => {
-                        setSortingProducts((value) => !value);
-                        setDraggingProduct(null);
-                      }}
-                    >
-                      {sortingProducts ? (
-                        <>
-                          <Check size={14} /> Listo
-                        </>
-                      ) : (
-                        <>
-                          <GripVertical size={14} /> Ordenar productos
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <label className="search">
-                    <Search size={17} />
-                    <input
-                      placeholder="Buscar producto…"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                  </label>
-                  <div className="pos-categories">
-                    {["Todos", ...categories].map((item) => (
-                      <button
-                        key={item}
-                        className={category === item ? "active" : ""}
-                        onClick={() => setCategory(item)}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                  <div
-                    className={
-                      sortingProducts
-                        ? "compact-products sorting"
-                        : "compact-products"
-                    }
-                  >
-                    {available.map((product, index) =>
-                      sortingProducts ? (
-                        <motion.div
-                          layout
-                          draggable
-                          className={
-                            draggingProduct === product.id
-                              ? "catalog-sort-card dragging"
-                              : "catalog-sort-card"
-                          }
-                          onDragStart={() => setDraggingProduct(product.id)}
-                          onDragEnd={() => setDraggingProduct(null)}
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={() => {
-                            if (
-                              draggingProduct !== null &&
-                              draggingProduct !== product.id
-                            )
-                              onReorder(draggingProduct, product.id);
-                            setDraggingProduct(null);
-                          }}
-                          key={product.id}
-                        >
-                          <GripVertical size={16} />
-                          <span>
-                            <strong>{product.name}</strong>
-                            <small>{product.category}</small>
-                          </span>
-                          <b>{money(product.price)}</b>
-                          <div>
-                            <button
-                              disabled={index === 0}
-                              aria-label={`Subir ${product.name}`}
-                              onClick={() =>
-                                moveCatalogProduct(product.id, index, -1)
-                              }
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              disabled={index === available.length - 1}
-                              aria-label={`Bajar ${product.name}`}
-                              onClick={() =>
-                                moveCatalogProduct(product.id, index, 1)
-                              }
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <motion.button
-                          layout
-                          whileTap={{ scale: 0.985 }}
-                          key={product.id}
-                          aria-label={`Agregar ${product.name}`}
-                          onClick={() => addProduct(product.id)}
-                        >
-                          <span>
-                            <strong>{product.name}</strong>
-                            <small>{product.category}</small>
-                          </span>
-                          <b>{money(product.price)}</b>
-                          <i>
-                            <Plus size={15} />
-                          </i>
-                        </motion.button>
-                      ),
-                    )}
-                  </div>
-                  {!available.length && (
-                    <div className="empty">
-                      <p>No encontramos productos.</p>
-                    </div>
-                  )}
-                </section>
-                <aside className="account-ticket">
-                  <div className="ticket-heading"><strong>Cuenta</strong><span>{itemCount} {itemCount === 1 ? "artículo" : "artículos"}</span></div>
-                  <div className="table-lines">
-                    <AnimatePresence initial={false}>
-                      {lines.length ? (
-                        lines.map(({ line, product }) => (
-                          <motion.div
-                            layout
-                            variants={fadeUp}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
-                            className={`table-line${selectedLineId === line.id ? " active" : ""}`}
-                            key={line.id}
-                          >
-                            <button className="table-line-details" aria-label={`Seleccionar ${product.name}`} aria-pressed={selectedLineId === line.id} title="Seleccionar; doble clic para aclaración" onClick={() => setSelectedLineId(line.id)} onDoubleClick={() => openLineEditor(line)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); openLineEditor(line); } }}>
-                              <strong>{product.name}</strong>
-                              <small>
-                                {money(product.price * line.quantity)}
-                              </small>
-                              {line.note && <span className="table-line-note">{line.note}</span>}
-                            </button>
-                            <div className="quantity">
-                              <button
-                                aria-label={`Restar una unidad de ${product.name}`}
-                                onClick={() => changeQuantity(line.id, -1)}
-                              >
-                                <Minus size={13} />
-                              </button>
-                              <span>{line.quantity}</span>
-                              <button
-                                aria-label={`Sumar una unidad de ${product.name}`}
-                                onClick={() => changeQuantity(line.id, 1)}
-                              >
-                                <Plus size={13} />
-                              </button>
-                            </div>
-                            <button
-                              className="remove-line"
-                              aria-label={`Eliminar ${product.name}`}
-                              onClick={() =>
-                                changeQuantity(line.id, -line.quantity)
-                              }
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </motion.div>
-                        ))
-                      ) : (
-                        <motion.div
-                          className="ticket-empty"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                        >
-                          <span>La mesa está disponible</span>
-                          <p>Elegí un producto para abrir la cuenta.</p>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                  <div className="ticket-actions" role="toolbar" aria-label="Acciones de la cuenta">
-                    <button type="button" aria-label="Aclaración del artículo seleccionado" title="Aclaración del artículo seleccionado" disabled={!selectedLine} onClick={() => selectedLine && openLineEditor(selectedLine)}><Pencil size={16} /></button>
-                    <button type="button" aria-label="Mover artículo seleccionado" title="Mover artículo seleccionado" disabled={!selectedLine} onClick={() => selectedLine && openLineEditor(selectedLine, "move")}><ArrowRightLeft size={16} /></button>
-                    <button type="button" aria-label="Mover cuenta a otra mesa" title="Mover cuenta a otra mesa" disabled={!lines.length} onClick={openTableMove}><MoveRight size={17} /></button>
-                    <button type="button" aria-label="Descuento" title="Descuento" aria-expanded={discountOpen} aria-controls="ticket-discount" disabled={!subtotal} className={discountOpen || discount > 0 ? "active" : ""} onClick={() => setDiscountOpen((value) => !value)}><BadgePercent size={17} /></button>
-                    <button type="button" aria-label={selected.billRequested ? "Volver a consumo" : "Entregar cuenta"} title={selected.billRequested ? "Volver a consumo" : "Entregar cuenta"} disabled={!total} className={selected.billRequested ? "active" : ""} onClick={toggleBillRequest}><ReceiptText size={17} /></button>
-                    <button type="button" aria-label="Vaciar mesa" title="Vaciar mesa" disabled={!lines.length} onClick={() => setConfirmClearTable(true)}><Trash2 size={16} /></button>
-                  </div>
-                  {confirmClearTable && <div className="ticket-clear-confirm" role="group" aria-label="Confirmar vaciado de mesa"><span>¿Vaciar esta mesa?</span><button type="button" onClick={() => setConfirmClearTable(false)}>Cancelar</button><button type="button" onClick={() => { update((table) => ({ ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined })); setSelectedLineId(null); setConfirmClearTable(false); }}>Vaciar</button></div>}
-                  {discountOpen && <label id="ticket-discount" className="manual-discount">
-                    <span>
-                      <strong>Descuento manual</strong>
-                      <small>Importe en pesos</small>
-                    </span>
-                    <div>
-                      <b>$</b>
-                      <input
-                        aria-label="Descuento manual"
-                        inputMode="numeric"
-                        type="number"
-                        autoFocus
-                        min="0"
-                        max={subtotal}
-                        step="100"
-                        disabled={!subtotal}
-                        value={selected.discount || ""}
-                        placeholder="0"
-                        onChange={(event) =>
-                          update((table) => ({
-                            ...table,
-                            billRequested: false,
-                            discount: Math.max(
-                              0,
-                              Math.min(
-                                subtotal,
-                                Number(event.target.value) || 0,
-                              ),
-                            ),
-                          }))
-                        }
-                      />
-                      {selected.discount > 0 && (
-                        <button
-                          type="button"
-                          aria-label="Quitar descuento"
-                          onClick={() =>
-                            update((table) => ({
-                              ...table,
-                              discount: 0,
-                              billRequested: false,
-                            }))
-                          }
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </label>}
-                  <div className="table-totals">
-                    <span>
-                      Subtotal <b>{money(subtotal)}</b>
-                    </span>
-                    {discount > 0 && (
-                      <span className="discount-line">
-                        Descuento <b>− {money(discount)}</b>
-                      </span>
-                    )}
-                    <strong>
-                      Total <b>{money(total)}</b>
-                    </strong>
-                  </div>
-                  <button
-                    className="button primary full"
-                    disabled={!total}
-                    onClick={() => { setPayment(""); setPaymentOpen(true); }}
-                  >
-                    <Check size={17} /> Cobrar y cerrar{" "}
-                    {total > 0 && money(total)}
-                  </button>
-                </aside>
+                <PosCatalog products={products} categories={categories} onAddProduct={addProduct} categoryContainer={categoryContainer} />
+                <PosAccountTicket
+                  table={selected}
+                  lines={lines}
+                  selectedLineId={selectedLineId}
+                  onSelectLine={setSelectedLineId}
+                  onEditLine={openLineEditor}
+                  onChangeQuantity={changeQuantity}
+                  onMoveTable={openTableMove}
+                  onToggleBill={toggleBillRequest}
+                  onClearTable={() => { update((table) => ({ ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined })); setSelectedLineId(null); setConfirmClearTable(false); }}
+                  discountOpen={discountOpen}
+                  onDiscountOpenChange={setDiscountOpen}
+                  confirmClear={confirmClearTable}
+                  onConfirmClearChange={setConfirmClearTable}
+                  onDiscountChange={(value) => update((table) => ({ ...table, billRequested: false, discount: Math.max(0, Math.min(subtotal, value)) }))}
+                  subtotal={subtotal}
+                  discount={discount}
+                  total={total}
+                  onOpenPayment={() => { setPayment(""); setPaymentOpen(true); }}
+                />
               </div>
             </motion.section>
             </motion.div>
@@ -2241,39 +1561,21 @@ export default function TablePOS({
       </AnimatePresence>
       <AnimatePresence>
         {accountOpen && selected && paymentOpen && (
-          <motion.div className="modal-scrim line-editor-scrim payment-scrim" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={() => setPaymentOpen(false)}>
-            <motion.section ref={paymentDialogRef} className="acrylic-modal line-editor-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title"
-              variants={modalVariants} initial="hidden" animate="visible" exit="exit" onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key !== "Tab") return;
-                const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)"));
-                if (!focusable.length) return;
-                if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
-                else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
-              }}>
-              <button className="modal-close" aria-label="Cerrar cobro" onClick={() => setPaymentOpen(false)}><X size={19} /></button>
-              <span className="eyebrow">COBRO DE MESA</span>
-              <h2 id="payment-title">Cobrar {displayTableName(selected)}</h2>
-              <div className="payment-total"><span>Total a cobrar</span><strong>{money(total)}</strong></div>
-              <fieldset className="payment-methods"><legend>Medio de pago</legend>
-                {([
-                  ["Efectivo", Banknote],
-                  ["Tarjeta", CreditCard],
-                  ["Transferencia", Smartphone],
-                ] as const).map(([method, Icon]) => <label key={method} className={`payment-choice${payment === method ? " selected" : ""}`}>
-                  <input type="radio" name="payment-method" value={method} checked={payment === method} onChange={() => setPayment(method)} />
-                  <Icon size={19} aria-hidden="true" /><span>{method}</span>
-                </label>)}
-              </fieldset>
-              <div className="line-editor-actions"><button className="button" onClick={() => setPaymentOpen(false)}>Cancelar</button><button className="button primary" disabled={!payment} onClick={confirmPayment}>Confirmar cobro · {money(total)}</button></div>
-            </motion.section>
-          </motion.div>
+          <PosPaymentDialog
+            dialogRef={paymentDialogRef}
+            tableName={displayTableName(selected)}
+            total={total}
+            payment={payment}
+            onPaymentChange={setPayment}
+            onClose={() => setPaymentOpen(false)}
+            onConfirm={confirmPayment}
+          />
         )}
       </AnimatePresence>
       <AnimatePresence>
         {accountOpen && selected && (moveWholeTable || (editorLine && editorProduct)) && (
           <motion.div className="modal-scrim line-editor-scrim" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={() => { if (performance.now() - lineOpenedAtRef.current > 400) setLineEditorId(null); }}>
-            <motion.section ref={lineDialogRef} className="acrylic-modal line-editor-modal" role="dialog" aria-modal="true" aria-labelledby="line-editor-title"
+            <motion.section ref={lineDialogRef} className={`acrylic-modal line-editor-modal${lineEditorMode === "note" ? " line-item-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="line-editor-title"
               variants={modalVariants} initial="hidden" animate="visible" exit="exit" onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
                 if (event.key !== "Tab") return;
@@ -2287,22 +1589,32 @@ export default function TablePOS({
               <h2 id="line-editor-title">{moveWholeTable ? `Mover ${displayTableName(selected)}` : editorProduct?.name}</h2>
               <p className="line-editor-subtitle">{moveWholeTable ? `${selected.items.reduce((sum, line) => sum + line.quantity, 0)} artículos · ${money(total)}` : `${editorLine?.quantity} ${editorLine?.quantity === 1 ? "unidad" : "unidades"} · ${money(editorProduct!.price)} por unidad`}</p>
               {lineEditorMode === "note" && editorLine ? <>
-                <label className="field line-editor-field">Aclaración
+                <div className="line-item-section">
+                  <div className="line-item-section-heading"><strong><BadgePercent size={16} aria-hidden="true" /> Precio y descuento</strong><span>Por unidad</span></div>
+                <div className="line-price-fields">
+                  <label className="field line-editor-field">Precio
+                    <span className="line-money-input"><span aria-hidden="true">$</span><input aria-label="Precio por unidad ($)" type="number" min="0" step="1" inputMode="numeric" value={linePriceDraft} onDoubleClick={(event) => event.currentTarget.select()} onChange={(event) => setLinePriceDraft(event.target.value)} /></span>
+                  </label>
+                  <label className="field line-editor-field">Descuento
+                    <span className="line-money-input"><span aria-hidden="true">$</span><input aria-label="Descuento por unidad ($)" type="number" min="0" step="1" inputMode="numeric" value={lineDiscountDraft} onChange={(event) => setLineDiscountDraft(event.target.value)} placeholder="0" /></span>
+                  </label>
+                </div>
+                {Number(lineDiscountDraft) > (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft)) && <p className="line-editor-error" role="alert">El descuento no puede superar el precio por unidad.</p>}
+                <div className="line-item-price-summary"><span>Precio final por unidad</span><strong>{money(Math.max(0, (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft) || 0) - (Number(lineDiscountDraft) || 0)))}</strong></div>
+                </div>
+                <label className="field line-editor-field line-item-note"><span className="line-item-label"><Pencil size={15} aria-hidden="true" /> Aclaración</span><span className="line-item-optional">Opcional</span>
                   <textarea aria-label="Aclaración" maxLength={200} value={lineNoteDraft} onChange={(event) => setLineNoteDraft(event.target.value)} placeholder="Ej. sin azúcar, leche vegetal…" />
-                  <small>Esta indicación queda guardada junto al artículo.</small>
                 </label>
-                {editorLine.quantity > 1 && <label className="field line-editor-field">Aplicar a cuántas unidades
-                  <input type="number" min={1} max={editorLine.quantity} value={lineQuantityDraft} onChange={(event) => setLineQuantityDraft(Math.min(editorLine.quantity, Math.max(1, Math.floor(Number(event.target.value) || 1))))} />
-                </label>}
+                {editorLine.quantity > 1 && <label className="line-item-quantity"><span><strong><LayoutGrid size={15} aria-hidden="true" /> Aplicar cambios</strong><small>Elegí cuántas unidades modificar</small></span><span className="line-item-quantity-input"><input aria-label="Aplicar a cuántas unidades" type="number" min={1} max={editorLine.quantity} value={lineQuantityDraft} onChange={(event) => setLineQuantityDraft(Math.min(editorLine.quantity, Math.max(1, Math.floor(Number(event.target.value) || 1))))} /><span>de {editorLine.quantity}</span></span></label>}
                 <div className="line-editor-actions">
                   <button className="button" onClick={() => { setLineEditorMode("move"); setMoveError(""); }}><ArrowRightLeft size={15} /> Mover a otra mesa</button>
-                  <button className="button primary" onClick={saveLineNote}>Guardar aclaración</button>
+                  <button className="button primary" disabled={Number(lineDiscountDraft) > (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft)) || Number(linePriceDraft) < 0 || Number(lineDiscountDraft) < 0} onClick={saveLineNote}><Check size={15} aria-hidden="true" /> Guardar cambios</button>
                 </div>
               </> : <>
                 <label className="field line-editor-field">Mesa de destino
                   <select value={moveTargetId} onChange={(event) => { setMoveTargetId(event.target.value); setMoveTargetOperatorId(""); setSourceMovePin(""); setTargetMovePin(""); setMoveError(""); }}>
                     <option value="">Elegí una mesa</option>
-                    {sectors.map((area) => <optgroup key={area.id} label={area.label}>{tables.filter((table) => table.area === area.id && table.id !== selectedId).map((table, index) => <option key={table.id} value={table.id}>{table.area === "counter" && !table.items.length ? `Puesto libre ${index + 1}` : displayTableName(table)} · {table.items.length ? table.billRequested ? "Cuenta solicitada" : "Ocupada" : "Libre"}</option>)}</optgroup>)}
+                    {sectors.map((area) => <optgroup key={area.id} label={area.label}>{tables.filter((table) => table.area === area.id && table.id !== selectedId && (area.id !== "counter" || table.items.length || table.billRequested)).map((table) => <option key={table.id} value={table.id}>{displayTableName(table)} · {table.items.length ? table.billRequested ? "Cuenta solicitada" : "Ocupada" : "Libre"}</option>)}{area.id === "counter" && canOpenCounter && <option value={NEW_COUNTER_TARGET}>Puesto libre 1 · Libre</option>}</optgroup>)}
                   </select>
                 </label>
                 {!moveWholeTable && editorLine && editorLine.quantity > 1 && <label className="field line-editor-field">Cantidad a mover
@@ -2341,181 +1653,28 @@ export default function TablePOS({
       </AnimatePresence>
       <AnimatePresence>
         {exitPinOpen && operator && (
-          <motion.div
-            className="modal-scrim operator-pin-scrim"
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            onClick={cancelOperatorPin}
-          >
-            <motion.section
-              className="acrylic-modal operator-pin-modal"
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="operator-pin-title"
-            >
-              <button
-                className="modal-close"
-                aria-label={pinPurpose === "enter" ? "Cancelar acceso" : pinPurpose === "settle" ? "Volver al cobro" : "Volver a la mesa"}
-                onClick={cancelOperatorPin}
-              >
-                <X size={19} />
-              </button>
-              <div className="operator-pin-icon">
-                <KeyRound size={21} />
-              </div>
-              <span className="eyebrow">VERIFICAR EMPLEADO</span>
-              <h2 id="operator-pin-title">Código de {operator.name}</h2>
-              <p>
-                {pinPurpose === "enter"
-                  ? `Ingresá tu código personal para entrar a ${selected ? displayTableName(selected) : "la mesa"}.`
-                  : pinPurpose === "transfer"
-                    ? `Confirmá tu código para quedar a cargo de ${selected ? displayTableName(selected) : "la mesa"}.`
-                  : pinPurpose === "request-bill"
-                    ? `Confirmá tu código para entregar la cuenta y salir de ${selected ? displayTableName(selected) : "la mesa"}.`
-                  : pinPurpose === "settle"
-                    ? `Confirmá tu código para cobrar y cerrar ${selected ? displayTableName(selected) : "la mesa"}.`
-                    : `Confirmá tu código para guardar la comanda y salir de ${selected ? displayTableName(selected) : "la mesa"}.`}
-              </p>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  verifyOperatorPin();
-                }}
-              >
-                <label className="field operator-pin-field">
-                  Código de cuatro números
-                  <input
-                    autoFocus
-                    aria-label={`Código de ${operator.name}`}
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={4}
-                    value={exitPin}
-                    onChange={(event) => {
-                      setExitPinError("");
-                      setExitPin(
-                        event.target.value.replace(/\D/g, "").slice(0, 4),
-                      );
-                    }}
-                  />
-                </label>
-                {exitPinError && (
-                  <motion.p
-                    className="operator-pin-error"
-                    initial={{ opacity: 0, y: 3 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    role="alert"
-                  >
-                    {exitPinError}
-                  </motion.p>
-                )}
-                <div className="operator-pin-actions">
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={cancelOperatorPin}
-                  >
-                    {pinPurpose === "enter" ? "Volver al plano" : pinPurpose === "settle" ? "Volver al cobro" : "Volver a la mesa"}
-                  </button>
-                  <button
-                    className="button primary"
-                    disabled={exitPin.length !== 4}
-                  >
-                    <Check size={16} />{" "}
-                    {pinPurpose === "enter"
-                      ? "Verificar y entrar"
-                      : pinPurpose === "transfer"
-                        ? "Confirmar cambio"
-                      : pinPurpose === "request-bill"
-                        ? "Confirmar y entregar"
-                      : pinPurpose === "settle"
-                        ? "Confirmar cobro"
-                        : "Confirmar y salir"}
-                  </button>
-                </div>
-              </form>
-            </motion.section>
-          </motion.div>
+          <EmployeePinDialog
+            operator={operator}
+            tableName={selected ? displayTableName(selected) : "la mesa"}
+            purpose={pinPurpose}
+            pin={exitPin}
+            error={exitPinError}
+            onPinChange={(value) => { setExitPinError(""); setExitPin(value); }}
+            onClose={cancelOperatorPin}
+            onConfirm={verifyOperatorPin}
+          />
         )}
-      </AnimatePresence>
-      <AnimatePresence>
+      </AnimatePresence>      <AnimatePresence>
         {editing && selected && (
-          <>
-            <motion.div
-              className="modal-scrim nested-scrim"
-              variants={overlayVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            />
-            <motion.div
-              className="acrylic-modal compact-modal table-edit-modal"
-              role="dialog"
-              aria-modal="true"
-              variants={fadeUp}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              <button
-                className="modal-close"
-                aria-label="Cerrar"
-                onClick={() => setEditing(false)}
-              >
-                <X size={18} />
-              </button>
-              <span className="eyebrow">DATOS DE LA MESA</span>
-              <h2>Editar {displayTableName(selected)}</h2>
-              <label className="field">
-                Nombre
-                <input
-                  value={selected.name}
-                  onChange={(event) =>
-                    update((table) => ({ ...table, name: event.target.value }))
-                  }
-                />
-              </label>
-              <label className="field">
-                Sector
-                <select
-                  value={selected.area}
-                  onChange={(event) =>
-                    moveSelectedArea(event.target.value as Area)
-                  }
-                >
-                  {sectors.map((area) => (
-                    <option
-                      value={area.id}
-                      disabled={
-                        area.limit !== undefined &&
-                        tables.filter((table) => table.area === area.id)
-                          .length >= area.limit &&
-                        selected.area !== area.id
-                      }
-                      key={area.id}
-                    >
-                      {area.label}
-                      {area.limit ? ` (máx. ${area.limit})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="button primary full"
-                onClick={() => setEditing(false)}
-              >
-                Guardar cambios
-              </button>
-            </motion.div>
-          </>
+          <TableEditDialog
+            table={selected}
+            tableName={displayTableName(selected)}
+            sectors={sectors}
+            tables={tables}
+            onNameChange={(name) => update((table) => ({ ...table, name }))}
+            onAreaChange={moveSelectedArea}
+            onClose={() => setEditing(false)}
+          />
         )}
       </AnimatePresence>
     </div>

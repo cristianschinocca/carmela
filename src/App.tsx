@@ -203,6 +203,17 @@ export function App() {
     setCategoryList((current) => [...current, name]);
     return true;
   };
+  const reorderCategories = (fromName: string, toName: string) => {
+    setCategoryList((current) => {
+      const from = current.indexOf(fromName);
+      const to = current.indexOf(toName);
+      if (from < 0 || to < 0 || from === to) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
   const renameCategory = (currentName: string, nextName: string) => {
     if (
       !nextName ||
@@ -260,12 +271,6 @@ export function App() {
             exit="exit"
           >
             <motion.aside className={side ? "sidebar visible" : "sidebar"}>
-              <a className="brand" onClick={() => go("Resumen")}>
-                <span className="brand-mark">
-                  <Coffee size={23} />
-                </span>
-                Carmela<span className="brand-dot">.</span>
-              </a>
               <button
                 className="workspace profile-workspace"
                 onClick={() => go("Configuración")}
@@ -634,7 +639,6 @@ export function App() {
                         products={products}
                         categories={categoryList}
                         onToast={toast}
-                        onReorder={reorderProducts}
                       />
                     ) : page === "Productos" ? (
                       <ProductManager
@@ -644,6 +648,7 @@ export function App() {
                         onDelete={deleteProduct}
                         onReorder={reorderProducts}
                         onAddCategory={addCategory}
+                        onReorderCategory={reorderCategories}
                         onRenameCategory={renameCategory}
                         onDeleteCategory={deleteCategory}
                       />

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { MotionProvider } from "./motion";
 import "./styles.css";
+import "./pos/table-pos.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

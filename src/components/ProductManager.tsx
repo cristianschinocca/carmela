@@ -28,6 +28,7 @@ type Props = {
   onDelete: (id: number) => void;
   onReorder: (fromId: number, toId: number) => void;
   onAddCategory: (name: string) => boolean;
+  onReorderCategory: (from: string, to: string) => void;
   onRenameCategory: (current: string, next: string) => boolean;
   onDeleteCategory: (name: string) => boolean;
 };
@@ -50,6 +51,7 @@ export function ProductManager({
   onDelete,
   onReorder,
   onAddCategory,
+  onReorderCategory,
   onRenameCategory,
   onDeleteCategory,
 }: Props) {
@@ -498,6 +500,7 @@ export function ProductManager({
             products={products}
             onClose={() => setShowCategories(false)}
             onAdd={onAddCategory}
+            onReorder={onReorderCategory}
             onRename={onRenameCategory}
             onDelete={onDeleteCategory}
           />
@@ -512,6 +515,7 @@ function CategoryManager({
   products,
   onClose,
   onAdd,
+  onReorder,
   onRename,
   onDelete,
 }: {
@@ -519,12 +523,21 @@ function CategoryManager({
   products: Product[];
   onClose: () => void;
   onAdd: (name: string) => boolean;
+  onReorder: (from: string, to: string) => void;
   onRename: (current: string, next: string) => boolean;
   onDelete: (name: string) => boolean;
 }) {
   const [newName, setNewName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [draggingCategory, setDraggingCategory] = useState<string | null>(null);
+  const [dropCategory, setDropCategory] = useState<string | null>(null);
+  const moveCategory = (category: string, target: string) => {
+    const position = categories.indexOf(target);
+    if (category === target || position < 0) return;
+    onReorder(category, target);
+    setMessage(`${category} ahora está en la posición ${position + 1} de ${categories.length}.`);
+  };
   const add = (event: FormEvent) => {
     event.preventDefault();
     if (onAdd(newName.trim())) {
@@ -574,12 +587,32 @@ function CategoryManager({
           </button>
         </form>
         <div className="category-list">
-          {categories.map((category) => {
+          {categories.map((category, index) => {
             const used = products.filter(
               (product) => product.category === category,
             ).length;
             return (
-              <div className="category-editor-row" key={category}>
+              <motion.div
+                layout
+                className={`category-editor-row${draggingCategory === category ? " dragging" : ""}${dropCategory === category ? " drop-target" : ""}`}
+                key={category}
+                onDragOver={(event) => { if (draggingCategory && draggingCategory !== category) { event.preventDefault(); setDropCategory(category); } }}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropCategory(null); }}
+                onDrop={(event) => { event.preventDefault(); if (draggingCategory) moveCategory(draggingCategory, category); setDraggingCategory(null); setDropCategory(null); }}
+              >
+                <button
+                  type="button"
+                  className="category-drag-handle"
+                  aria-label={`Mover categoría ${category}`}
+                  title="Arrastrar para ordenar"
+                  draggable
+                  onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", category); setDraggingCategory(category); }}
+                  onDragEnd={() => { setDraggingCategory(null); setDropCategory(null); }}
+                  onKeyDown={(event) => {
+                    const target = event.key === "ArrowUp" ? categories[index - 1] : event.key === "ArrowDown" ? categories[index + 1] : undefined;
+                    if (target) { event.preventDefault(); moveCategory(category, target); }
+                  }}
+                ><GripVertical size={16} aria-hidden="true" /></button>
                 <input
                   aria-label={`Nombre de ${category}`}
                   value={drafts[category] ?? category}
@@ -590,6 +623,10 @@ function CategoryManager({
                 <span>
                   {used} producto{used === 1 ? "" : "s"}
                 </span>
+                <div className="category-order-controls" aria-label={`Orden de ${category}`}>
+                  <button type="button" aria-label={`Subir categoría ${category}`} title="Subir" disabled={index === 0} onClick={() => moveCategory(category, categories[index - 1])}><ChevronUp size={15} /></button>
+                  <button type="button" aria-label={`Bajar categoría ${category}`} title="Bajar" disabled={index === categories.length - 1} onClick={() => moveCategory(category, categories[index + 1])}><ChevronDown size={15} /></button>
+                </div>
                 <button
                   className="icon-btn"
                   aria-label={`Guardar categoría ${category}`}
@@ -620,7 +657,7 @@ function CategoryManager({
                 >
                   <Trash2 size={15} />
                 </button>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -629,6 +666,7 @@ function CategoryManager({
             <motion.p
               key={message}
               className="inline-message"
+              role="status"
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
@@ -638,7 +676,7 @@ function CategoryManager({
           )}
         </AnimatePresence>
         <p className="help-copy">
-          Una categoría con productos no puede eliminarse.
+          Arrastrá o usá las flechas para ordenar. Una categoría con productos no puede eliminarse.
         </p>
       </motion.section>
     </motion.div>
