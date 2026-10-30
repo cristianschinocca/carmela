@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   Clock3,
   CalendarDays,
+  ChevronRight,
   Pencil,
   Plus,
   Search,
@@ -27,6 +28,7 @@ import {
   type TeamMember,
   type TeamPay,
   type TeamRole,
+  type TeamWorkday,
 } from "../stores/team";
 
 export { loadTeamMembers, type TeamMember } from "../stores/team";
@@ -54,7 +56,7 @@ const scheduleTimesLabel = (pay: TeamPay) => {
 };
 const defaultPay: TeamPay = {
   basis: "hour", rate: 0,
-  schedule: [1, 2, 3, 4, 5].map((day) => ({ day, start: "08:00", end: "16:00" })),
+  schedule: [],
 };
 export function TeamManager() {
   const [team, setTeam] = useState<TeamMember[]>(() =>
@@ -152,7 +154,7 @@ export function TeamManager() {
                   });
                 }}
               >
-                <Plus size={17} /> Nueva persona
+                <Plus size={17} /> Nuevo empleado
               </button>
             </div>
           </div>
@@ -182,7 +184,7 @@ export function TeamManager() {
                   <span>{member.role}</span>
                 </div>
                 <div className="team-schedule">
-                  {member.pay ? <><strong>{scheduleLabel(member.pay)}</strong><small>{scheduleTimesLabel(member.pay)}</small></> : <span>Sin horario</span>}
+                  {member.pay?.schedule.length ? <><strong>{scheduleLabel(member.pay)}</strong><small>{scheduleTimesLabel(member.pay)}</small></> : <span>Sin horario</span>}
                 </div>
                 <div className="team-rate">{member.pay?.rate ? <><strong>{money(member.pay.rate)}</strong><small>por {member.pay.basis === "hour" ? "hora" : "día"}</small></> : <span>Sin configurar</span>}</div>
                 <div className="team-estimate">{member.pay?.rate ? <strong>{money(monthlyPayEstimate(member.pay))}</strong> : <span>—</span>}</div>
@@ -249,32 +251,27 @@ function MemberEditor({
 }) {
   const [draft, setDraft] = useState(member);
   const [error, setError] = useState("");
-  const [section, setSection] = useState<"access" | "pay">("access");
+  const [setup, setSetup] = useState<"schedule" | "rate" | null>(null);
   const updateDraft = (next: TeamMember) => { setError(""); setDraft(next); };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!draft.name.trim()) {
-      setSection("access");
       setError("Ingresá el nombre de la persona.");
       return;
     }
     if (!/^\d{4}$/.test(draft.pin)) {
-      setSection("access");
       setError("Ingresá un código de exactamente 4 números.");
       return;
     }
     if (team.some((item) => item.id !== draft.id && item.pin === draft.pin)) {
-      setSection("access");
       setError("Ese código ya pertenece a otra persona.");
-      return;
-    }
-    if (draft.pay && (!Number.isFinite(draft.pay.rate) || draft.pay.rate <= 0 || !draft.pay.schedule.length || draft.pay.schedule.some((day) => !Number.isFinite(workHoursPerDay(day)) || workHoursPerDay(day) <= 0))) {
-      setSection("pay");
-      setError("Completá una tarifa mayor a cero y una entrada y salida válidas por cada día seleccionado.");
       return;
     }
     onSave({ ...draft, id: draft.id || Date.now(), name: draft.name.trim() });
   };
+  if (setup) {
+    return <TeamSetupDialog key={setup} mode={setup} pay={draft.pay} onCancel={() => setSetup(null)} onApply={(pay) => { updateDraft({ ...draft, pay }); setSetup(null); }} />;
+  }
   return (
     <motion.div
       className="modal-backdrop"
@@ -285,7 +282,7 @@ function MemberEditor({
       onClick={onClose}
     >
       <motion.section
-        className={`product-modal member-modal member-modal-${section}`}
+        className="product-modal member-modal member-modal-access"
         variants={modalVariants}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
@@ -302,17 +299,12 @@ function MemberEditor({
         <div className="editor-heading">
           <span className="eyebrow">EQUIPO</span>
           <h2 id="member-title">
-            {draft.id ? "Editar persona" : "Nueva persona"}
+            {draft.id ? "Editar empleado" : "Nuevo empleado"}
           </h2>
           <p>Configurá el acceso, la jornada y el sueldo estimado.</p>
         </div>
-        <div className="member-form-sections" role="group" aria-label="Secciones de la persona">
-          <button type="button" aria-pressed={section === "access"} className={section === "access" ? "active" : ""} onClick={() => { setSection("access"); setError(""); }}>Datos y acceso</button>
-          <button type="button" aria-pressed={section === "pay"} className={section === "pay" ? "active" : ""} onClick={() => { setSection("pay"); setError(""); }}>Pago y jornada</button>
-        </div>
         <form className="product-form" onSubmit={submit} noValidate>
           <div className="member-form-body">
-          {section === "access" ? <>
           <label className="field">
             Nombre completo
             <input
@@ -367,49 +359,20 @@ function MemberEditor({
             />
             <span><strong>Usuario activo</strong><small>Puede ingresar al sistema y registrar fichajes.</small></span>
           </label>
-          </> : <>
-          <div className="team-pay-editor">
-            <div className="team-pay-head">
-              <span className="round-icon"><CalendarDays size={17} /></span>
-              <div><strong>Tarifa y horario</strong><small>Estimación para el mes actual.</small></div>
-              {draft.pay && <div className="team-pay-head-estimate"><small>Estimado</small><strong>{money(monthlyPayEstimate(draft.pay))}</strong></div>}
-              {!draft.pay && <button type="button" className="button" onClick={() => updateDraft({ ...draft, pay: { ...defaultPay, schedule: defaultPay.schedule.map((day) => ({ ...day })) } })}>Configurar</button>}
-            </div>
-            {draft.pay && <>
-              <div className="team-pay-fields">
-                <label className="field">Tipo de pago
-                  <select value={draft.pay.basis} onChange={(event) => updateDraft({ ...draft, pay: { ...draft.pay!, basis: event.target.value as TeamPay["basis"] } })}>
-                    <option value="hour">Por hora</option><option value="day">Por día</option>
-                  </select>
-                </label>
-                <label className="field">Importe ($)
-                  <input type="number" min="1" step="1" inputMode="numeric" value={draft.pay.rate || ""} placeholder="0" onChange={(event) => updateDraft({ ...draft, pay: { ...draft.pay!, rate: Number(event.target.value) } })} />
-                </label>
-              </div>
-              <fieldset className="team-pay-days">
-                <legend>Días de trabajo</legend>
-                <div>{weekdays.map(({ day, label }) => {
-                  const selected = draft.pay!.schedule.some((item) => item.day === day);
-                  return <button type="button" aria-pressed={selected} className={selected ? "selected" : ""} key={day} onClick={() => updateDraft({ ...draft, pay: { ...draft.pay!, schedule: selected ? draft.pay!.schedule.filter((item) => item.day !== day) : [...draft.pay!.schedule, { day, start: "08:00", end: "16:00" }] } })}>{label}</button>;
-                })}</div>
-              </fieldset>
-              <div className="team-day-schedules" aria-label="Horarios por día">
-                <div className="team-day-schedules-head" aria-hidden="true"><span>Día</span><span>Entrada</span><span>Salida</span></div>
-                {weekdays.filter(({ day }) => draft.pay!.schedule.some((item) => item.day === day)).map(({ day, label }) => {
-                  const workday = draft.pay!.schedule.find((item) => item.day === day)!;
-                  const updateTime = (field: "start" | "end", value: string) => updateDraft({ ...draft, pay: { ...draft.pay!, schedule: draft.pay!.schedule.map((item) => item.day === day ? { ...item, [field]: value } : item) } });
-                  return <div className="team-day-schedule" key={day}>
-                    <strong>{label}</strong>
-                    <input type="time" aria-label={`Entrada ${label}`} value={workday.start} onChange={(event) => updateTime("start", event.target.value)} />
-                    <input type="time" aria-label={`Salida ${label}`} value={workday.end} onChange={(event) => updateTime("end", event.target.value)} />
-                  </div>;
-                })}
-                {!draft.pay.schedule.length && <p>Elegí al menos un día de trabajo.</p>}
-              </div>
-              <button type="button" className="team-pay-remove" onClick={() => updateDraft({ ...draft, pay: undefined })}>Quitar configuración de sueldo</button>
-            </>}
+          <div className="mt-3 grid grid-cols-1 gap-2 min-[521px]:grid-cols-2">
+            <button type="button" className="flex w-full min-w-0 items-center gap-[11px] rounded-[10px] !border !border-[var(--border)] !bg-[var(--surface)] p-2.5 text-left transition-colors hover:!border-[var(--brand)] focus-visible:!border-[var(--brand)]" onClick={() => setSetup("schedule")}>
+              <span className="round-icon !size-[34px] shrink-0"><CalendarDays size={17} /></span>
+              <span className="grid min-w-0 flex-1 gap-1"><strong className="!text-[11px] !text-[var(--text)]">Jornada semanal</strong><small className="text-[9px] text-[var(--muted)]">{draft.pay?.schedule.length ? scheduleLabel(draft.pay) + " · " + scheduleTimesLabel(draft.pay) : "Elegí los días y horarios de trabajo"}</small></span>
+              <ChevronRight size={17} className="shrink-0 text-[var(--muted)]" />
+            </button>
+            <button type="button" className="flex w-full min-w-0 items-center gap-[11px] rounded-[10px] !border !border-[var(--border)] !bg-[var(--surface)] p-2.5 text-left transition-colors hover:!border-[var(--brand)] focus-visible:!border-[var(--brand)]" onClick={() => setSetup("rate")}>
+              <span className="round-icon !size-[34px] shrink-0"><Wallet size={17} /></span>
+              <span className="grid min-w-0 flex-1 gap-1"><strong className="!text-[11px] !text-[var(--text)]">Tarifa de pago</strong><small className="text-[9px] text-[var(--muted)]">{draft.pay?.rate ? money(draft.pay.rate) + " por " + (draft.pay.basis === "hour" ? "hora" : "día") : "Configurá el importe de pago"}</small></span>
+              <ChevronRight size={17} className="shrink-0 text-[var(--muted)]" />
+            </button>
+            {draft.pay?.rate && !!draft.pay.schedule.length && <p className="col-span-full !m-0 flex items-center justify-between gap-3 rounded-[9px] bg-[var(--brand-soft)] px-3 py-2.5 text-[10px]">Estimado este mes <strong className="!text-[10px] !text-[var(--text)]">{money(monthlyPayEstimate(draft.pay))}</strong></p>}
+            <small className="col-span-full mt-0.5 text-[9px] text-[var(--muted)]">La jornada y la tarifa se guardan junto con el empleado.</small>
           </div>
-          </>}
           </div>
           {error && (
             <motion.p
@@ -446,7 +409,7 @@ function MemberEditor({
                   Cancelar
                 </button>
                 <button className="button primary">
-                  {draft.id ? "Guardar cambios" : "Crear usuario"}
+                  {draft.id ? "Guardar cambios" : "Crear empleado"}
                 </button>
               </>
             )}
@@ -455,4 +418,86 @@ function MemberEditor({
       </motion.section>
     </motion.div>
   );
+}
+
+function TeamSetupDialog({ mode, pay, onCancel, onApply }: {
+  mode: "schedule" | "rate";
+  pay?: TeamPay;
+  onCancel: () => void;
+  onApply: (pay: TeamPay | undefined) => void;
+}) {
+  const [draft, setDraft] = useState<TeamPay>(() => pay ? { ...pay, schedule: pay.schedule.map((day) => ({ ...day })) } : { ...defaultPay, schedule: [] });
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onCancel(); } };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+  const updateSchedule = (schedule: TeamWorkday[]) => { setError(""); setDraft((current) => ({ ...current, schedule })); };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (mode === "rate" && (!Number.isFinite(draft.rate) || draft.rate <= 0)) {
+      setError("Ingresá un importe mayor a cero.");
+      return;
+    }
+    if (mode === "schedule" && draft.schedule.some((day) => !Number.isFinite(workHoursPerDay(day)) || workHoursPerDay(day) <= 0)) {
+      setError("Revisá que cada salida sea posterior a la entrada.");
+      return;
+    }
+    onApply(draft.rate || draft.schedule.length ? draft : undefined);
+  };
+  return <motion.div className="modal-backdrop" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={onCancel}>
+    <motion.section className={`product-modal member-modal team-setup-modal team-setup-${mode}`} variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="team-setup-title">
+      <button type="button" className="icon-btn close-modal" aria-label="Volver al empleado" onClick={onCancel}><X size={20} /></button>
+      <div className="editor-heading">
+        <span className="eyebrow">EQUIPO</span>
+        <h2 id="team-setup-title">{mode === "schedule" ? "Jornada semanal" : "Tarifa de pago"}</h2>
+        <p>{mode === "schedule" ? "Elegí los días y definí el horario de cada uno." : "Configurá cuánto cobra el empleado."}</p>
+      </div>
+      <form className="product-form" onSubmit={submit} noValidate>
+        <div className="member-form-body">
+          {mode === "schedule" ? <>
+            <fieldset className="team-pay-days">
+              <legend>Días de trabajo</legend>
+              <div>{weekdays.map(({ day, label }) => {
+                const selected = draft.schedule.some((item) => item.day === day);
+                return <button type="button" aria-pressed={selected} className={selected ? "selected" : ""} key={day} onClick={() => updateSchedule(selected ? draft.schedule.filter((item) => item.day !== day) : [...draft.schedule, { day, start: "08:00", end: "16:00" }])}>{label}</button>;
+              })}</div>
+            </fieldset>
+            <div className="team-day-schedules" aria-label="Horarios por día">
+              {!!draft.schedule.length && <div className="team-day-schedules-head" aria-hidden="true"><span>Día</span><span>Entrada</span><span>Salida</span></div>}
+              {weekdays.filter(({ day }) => draft.schedule.some((item) => item.day === day)).map(({ day, label }) => {
+                const workday = draft.schedule.find((item) => item.day === day)!;
+                const updateTime = (field: "start" | "end", value: string) => updateSchedule(draft.schedule.map((item) => item.day === day ? { ...item, [field]: value } : item));
+                return <div className="team-day-schedule" key={day}>
+                  <strong>{label}</strong>
+                  <input type="time" aria-label={`Entrada ${label}`} value={workday.start} onChange={(event) => updateTime("start", event.target.value)} />
+                  <input type="time" aria-label={`Salida ${label}`} value={workday.end} onChange={(event) => updateTime("end", event.target.value)} />
+                </div>;
+              })}
+              {!draft.schedule.length && <p>Seleccioná los días que trabaja el empleado.</p>}
+            </div>
+          </> : <>
+            <div className="team-pay-fields">
+              <label className="field">Tipo de pago
+                <select value={draft.basis} onChange={(event) => setDraft({ ...draft, basis: event.target.value as TeamPay["basis"] })}>
+                  <option value="hour">Por hora</option><option value="day">Por día</option>
+                </select>
+              </label>
+              <label className="field">Importe ($)
+                <input autoFocus type="number" min="1" step="1" inputMode="numeric" value={draft.rate || ""} placeholder="0" onChange={(event) => { setError(""); setDraft({ ...draft, rate: Number(event.target.value) }); }} />
+              </label>
+            </div>
+            <div className="team-setup-estimate"><span>Estimado este mes<small>{draft.schedule.length ? "Según la jornada configurada" : "Configurá la jornada para calcularlo"}</small></span><strong>{draft.schedule.length ? money(monthlyPayEstimate(draft)) : "—"}</strong></div>
+          </>}
+        </div>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <div className="form-actions">
+          {mode === "rate" && draft.rate > 0 && <button type="button" className="danger-text" onClick={() => onApply(draft.schedule.length ? { ...draft, rate: 0 } : undefined)}>Quitar tarifa</button>}
+          <button type="button" className="button" onClick={onCancel}>Cancelar</button>
+          <button className="button primary">Aplicar cambios</button>
+        </div>
+      </form>
+    </motion.section>
+  </motion.div>;
 }

@@ -20,6 +20,7 @@ export type Table = {
   slot?: number;
 };
 export const KEY = "carmela.pos.floor.v2";
+export const NEW_COUNTER_TARGET = "__new_counter__";
 export const newLineId = () => `line-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 const TABLE_GRID_COLUMNS = 16;
 const TABLE_GRID_X_STEP = 66;

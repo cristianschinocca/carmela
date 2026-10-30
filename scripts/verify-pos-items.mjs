@@ -27,7 +27,7 @@ try {
   });
   await page.reload();
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
-  await page.getByRole('button', { name: /Abrir Mesa 1, libre/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 1, libre$/ }).click();
   await page.getByRole('button', { name: 'Trabajar como Tomás Vega' }).click();
   await page.locator('.covers-modal').getByRole('button', { name: 'Abrir mesa', exact: true }).click();
   const account = page.getByRole('dialog', { name: 'Cuenta de Mesa 1' });
@@ -38,7 +38,7 @@ try {
   assert.equal(closeHit, 'Cerrar cuenta');
   await closeButton.click();
   await account.waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: /Abrir Mesa 1, libre/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 1, libre$/ }).click();
   await page.getByRole('button', { name: 'Trabajar como Tomás Vega' }).click();
   await page.locator('.covers-modal').getByRole('button', { name: 'Abrir mesa', exact: true }).click();
   await account.waitFor();
@@ -179,7 +179,7 @@ try {
 
   await page.reload();
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
-  await page.getByRole('button', { name: /Abrir Mesa 2, ocupada/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 2, ocupada$/ }).click();
   const pin = page.getByRole('dialog', { name: 'Código de Tomás Vega' });
   await pin.getByRole('textbox', { name: 'Código de Tomás Vega' }).fill('2468');
   await pin.getByRole('button', { name: 'Verificar y entrar' }).click();
@@ -199,7 +199,7 @@ try {
   assert.equal(sales[0].items[0].note, 'Sin azúcar');
   assert.equal(sales[0].payment, 'Tarjeta');
   await destinationAccount.waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: /Abrir Mesa 3, ocupada/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 3, ocupada$/ }).click();
   const camilaPin = page.getByRole('dialog', { name: 'Código de Camila López' });
   await camilaPin.getByRole('textbox', { name: 'Código de Camila López' }).fill('4829');
   await camilaPin.getByRole('button', { name: 'Verificar y entrar' }).click();
@@ -233,7 +233,7 @@ try {
   assert.equal(tables.find((table) => table.name === 'Mesa 3').items.length, 0);
   assert.equal(tables.find((table) => table.name === 'Mesa 4').discount, 500);
   assert.equal(tables.find((table) => table.name === 'Mesa 4').operatorId, 1);
-  await page.getByRole('button', { name: /Abrir Mesa 4, ocupada/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 4, ocupada$/ }).click();
   const reopenPin = page.getByRole('dialog', { name: 'Código de Camila López' });
   await reopenPin.getByRole('textbox', { name: 'Código de Camila López' }).fill('4829');
   await reopenPin.getByRole('button', { name: 'Verificar y entrar' }).click();
@@ -256,7 +256,7 @@ try {
   assert.equal(merged.billRequested, false);
   assert.equal(merged.items.find((line) => line.productId === 1).quantity, 2);
   assert.equal(tables.find((table) => table.name === 'Mesa 4').items.length, 0);
-  await page.getByRole('button', { name: /Abrir Mesa 1, libre/ }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole('button', { name: /^Abrir Mesa 1, libre$/ }).click();
   await page.getByRole('button', { name: 'Trabajar como Tomás Vega' }).click();
   await page.locator('.covers-modal').getByRole('button', { name: 'Abrir mesa', exact: true }).click();
   const newAccount = page.getByRole('dialog', { name: 'Cuenta de Mesa 1' });

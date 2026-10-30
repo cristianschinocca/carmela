@@ -23,21 +23,21 @@ export function Metric({
       : label;
   return (
     <motion.section
-      className="metric"
+      className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-5 pt-[18px] pb-[19px] shadow-[var(--shadow)] min-[1600px]:p-6 max-[1200px]:p-3.5 max-[760px]:p-4"
       variants={fadeUp}
       initial="hidden"
       animate="visible"
       whileHover={subtleHover}
       whileTap={press}
     >
-      <div className="metric-label">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] max-[1000px]:text-[10px] max-[760px]:text-[11px]">
         <span>{label}</span>
-        <span className="round-icon">{icon}</span>
+        <span className="grid h-[33px] w-[33px] shrink-0 place-items-center rounded-full bg-[var(--brand-soft)] text-[var(--brand)] max-[1000px]:h-[26px] max-[1000px]:w-[26px] max-[1000px]:[&_svg]:h-[15px] max-[1000px]:[&_svg]:w-[15px]">{icon}</span>
       </div>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.strong
           key={valueKey}
-          className="metric-value"
+          className="my-[7px] mb-3.5 block text-[29px] leading-tight font-medium tracking-[-1.1px] text-[var(--text)] min-[1600px]:text-[36px] max-[1200px]:text-[26px] max-[1000px]:text-[23px] max-[760px]:text-[28px] max-h-[800px]:min-[761px]:mt-[3px] max-h-[800px]:min-[761px]:mb-2"
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -3 }}
@@ -45,7 +45,7 @@ export function Metric({
           {value}
         </motion.strong>
       </AnimatePresence>
-      <div className="metric-bottom">
+      <div className="flex flex-wrap items-center gap-[7px] text-[9px] text-[var(--muted)] max-[1000px]:text-[8px] max-[760px]:text-[9px]">
         {detail && <span className="trend">↗ {detail}</span>}
         <span>{sub}</span>
       </div>

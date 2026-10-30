@@ -11,17 +11,21 @@ try {
   await page.getByRole("button", { name: "Punto de venta", exact: true }).click();
 
   // A free table asks who will work on it, but leaving without a command is immediate.
-  await page.getByRole("button", { name: "Abrir Mesa 1", exact: true }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole("button", { name: /^Abrir Mesa 1,/ }).click();
   await page.getByRole("button", { name: "Trabajar como Tomás Vega" }).click();
   await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "¿Quién va a gestionar esta mesa?" }).waitFor();
+  await page.keyboard.press("Escape");
   await page.getByRole("dialog", { name: /Cuenta de Mesa 1/ }).waitFor({ state: "detached" });
+  await page.waitForFunction(() => !document.querySelector(".modal-scrim.account-scrim"));
   if (await page.getByRole("dialog", { name: /Código de/ }).count()) {
     throw new Error("A table without a command requested a PIN on exit");
   }
 
   // The first commanded product assigns the table to the selected employee.
-  await page.getByRole("button", { name: "Abrir Mesa 1", exact: true }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole("button", { name: /^Abrir Mesa 1,/ }).click();
   await page.getByRole("button", { name: "Trabajar como Tomás Vega" }).click();
+  await page.locator(".covers-modal").getByRole("button", { name: "Abrir mesa", exact: true }).click();
   await page.getByRole("button", { name: "Agregar Flat white", exact: true }).click();
   await page.keyboard.press("Escape");
   await page.getByRole("dialog", { name: "Código de Tomás Vega" }).waitFor();
@@ -38,7 +42,7 @@ try {
   // Assignment survives reload and protects entry, not exit.
   await page.reload();
   await page.getByRole("button", { name: "Punto de venta", exact: true }).click();
-  await page.getByRole("button", { name: "Abrir Mesa 1", exact: true }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole("button", { name: /^Abrir Mesa 1,/ }).click();
   const pinDialog = page.getByRole("dialog", { name: "Código de Tomás Vega" });
   await pinDialog.waitFor();
   if (await page.getByRole("dialog", { name: /Cuenta de Mesa 1/ }).count()) {
@@ -63,7 +67,7 @@ try {
   });
   await page.reload();
   await page.getByRole("button", { name: "Punto de venta", exact: true }).click();
-  await page.getByRole("button", { name: "Abrir Mesa 1", exact: true }).click();
+  await page.locator('.floor-sector[data-sector-id="salon"]').getByRole("button", { name: /^Abrir Mesa 1,/ }).click();
   await page.getByRole("button", { name: "Trabajar como Camila López" }).click();
   await page.getByRole("dialog", { name: "Código de Camila López" }).waitFor();
   if (await page.getByRole("dialog", { name: /Cuenta de Mesa 1/ }).count()) {

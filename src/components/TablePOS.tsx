@@ -10,28 +10,22 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  ArrowRightLeft,
-  BadgePercent,
   Check,
-  ChevronDown,
   Eraser,
   GripVertical,
   Grid2X2,
   LayoutGrid,
   Minus,
   Palette,
-  Pencil,
   Plus,
   RotateCcw,
   Search,
   Trash2,
-  UserRound,
-  UsersRound,
   X,
 } from "lucide-react";
 import type { Product } from "../data";
 import { money } from "../data";
-import { fadeUp, modalVariants, overlayVariants, press, transitions } from "../motion";
+import { fadeUp, press, transitions } from "../motion";
 import {
   loadTeamMembers,
   type TeamMember,
@@ -45,8 +39,10 @@ import EmployeePickerDialog from "./pos-dialogs/EmployeePickerDialog";
 import CoversDialog from "./pos-dialogs/CoversDialog";
 import EmployeePinDialog from "./pos-dialogs/EmployeePinDialog";
 import TableEditDialog from "./pos-dialogs/TableEditDialog";
+import LineEditorDialog from "./pos-dialogs/LineEditorDialog";
+import AccountDialog from "./pos-dialogs/AccountDialog";
 import {
-  KEY, newLineId, SECTORS_KEY, FREEFORM_MIN_HEIGHT, SECTOR_GAP, COUNTER_LIMIT,
+  KEY, newLineId, NEW_COUNTER_TARGET, SECTORS_KEY, FREEFORM_MIN_HEIGHT, SECTOR_GAP, COUNTER_LIMIT,
   MAX_SECTOR_HEIGHT, TABLE_SLOT_LIMIT, tableGridMetrics,
   materializeTableSlots, loadSectors, makeDefaultMosaic, sectorRect,
   sectorsTouch, sectorObstacles, moveSectorRect, resizeSectorRect,
@@ -60,7 +56,7 @@ import {
 
 const lineUnitPrice = (line: Line, productPrice: number) => Math.max(0, (line.unitPrice ?? productPrice) - (line.unitDiscount ?? 0));
 const sameLinePrice = (a: Line, b: Line) => a.unitPrice === b.unitPrice && (a.unitDiscount || 0) === (b.unitDiscount || 0);
-const NEW_COUNTER_TARGET = "__new_counter__";
+const floorEditGroupClassName = "flex min-w-0 flex-wrap items-center gap-[7px] max-[760px]:max-w-full [&_.button]:!min-h-9 [&_.button]:!px-[11px] [&_.button]:!py-2";
 const makeCounterTable = (tables: Table[], id = `counter-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`): Table => {
   const occupied = new Set(materializeTableSlots(tables).filter((table) => table.area === "counter").map((table) => table.slot));
   let slot = 0;
@@ -1287,17 +1283,17 @@ export default function TablePOS({
   };
   return (
     <div className="floor-manager">
-      <section className="panel floor-toolbar">
-        <div className="floor-toolbar-main">
-          <div className="floor-toolbar-heading">
+      <section className="panel !block !px-5 !py-[18px] max-[760px]:!p-4">
+        <div className="flex items-center justify-between gap-4 max-[760px]:flex-wrap max-[760px]:items-start">
+          <div className="min-w-0">
             <span className="eyebrow">SECTORES</span>
-            <h2>Plano de mesas</h2>
-            <p>
+            <h2 className="!my-1 !text-[22px]">Plano de mesas</h2>
+            <p className="!text-[10px]">
               {tables.filter((table) => table.items.length).length} abiertas ·{" "}
               {tables.length} de {floorCapacity} lugares · {sectors.length} sectores
             </p>
           </div>
-          <div className="floor-actions">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-[760px]:w-full max-[760px]:justify-start">
             <div className="table-add-anchor">
               <button className="button" aria-expanded={addingTables} onClick={() => addingTables ? setAddingTables(false) : openAddTables()}>
                 <Plus size={16} /> Agregar mesa
@@ -1338,25 +1334,25 @@ export default function TablePOS({
             </button>
           </div>
         </div>
-        {layoutMode && <div className="floor-edit-tools" role="group" aria-label="Herramientas de edición del plano">
-          <div className="floor-edit-group">
-            <span className="floor-edit-label">Mesas</span>
-            <button className={selectingTables ? "button floor-selection-active" : "button"} aria-pressed={selectingTables} onClick={() => {
+        {layoutMode && <div className="mt-4 flex flex-wrap items-start gap-x-6 gap-y-3.5 border-t border-[var(--border)] pt-[15px] max-[760px]:gap-x-[18px]" role="group" aria-label="Herramientas de edición del plano">
+          <div className={floorEditGroupClassName}>
+            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Mesas</span>
+            <button className={selectingTables ? "button !border-[var(--brand)] !bg-[var(--brand-soft)] !text-[var(--brand-deep)]" : "button"} aria-pressed={selectingTables} onClick={() => {
               setSelectingTables((value) => !value);
               setSelectedTableIds([]);
               setConfirmDeleteTables(false);
             }}><Check size={16} /> {selectingTables ? "Cancelar selección" : "Seleccionar mesas"}</button>
-            {selectingTables && <span className="floor-selection-count" aria-live="polite">{selectedTableIds.length} {selectedTableIds.length === 1 ? "seleccionada" : "seleccionadas"}</span>}
+            {selectingTables && <span className="whitespace-nowrap px-[3px] text-[10px] text-[var(--muted)]" aria-live="polite">{selectedTableIds.length} {selectedTableIds.length === 1 ? "seleccionada" : "seleccionadas"}</span>}
             {selectedTableIds.length > 0 && <button className="button danger-button" onClick={() => setConfirmDeleteTables(true)}>
               <Trash2 size={15} /> Eliminar ({selectedTableIds.length})
             </button>}
           </div>
-          <div className="floor-edit-group">
-            <span className="floor-edit-label">Sectores</span>
+          <div className={floorEditGroupClassName}>
+            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Sectores</span>
             <button className="button" onClick={() => setAddingSector(true)}><Plus size={16} /> Agregar sector</button>
           </div>
-          <div className="floor-edit-group">
-            <span className="floor-edit-label">Distribución</span>
+          <div className={floorEditGroupClassName}>
+            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Distribución</span>
             <button className="button" onClick={() => arrangeTables()}><LayoutGrid size={16} /> Alinear todas</button>
             {sectors.length === 3 && ["salon", "patio", "counter"].every((id) => sectors.some((sector) => sector.id === id)) && (
             <button className="button" onClick={() => {
@@ -1376,7 +1372,7 @@ export default function TablePOS({
       </section>
       {layoutMode && (
         <motion.div
-          className="floor-tip"
+          className="flex justify-between gap-5 rounded-[11px] bg-[var(--brand-soft)] px-4 py-2.5 text-[10px] text-[var(--brand-deep)] max-[760px]:block max-[760px]:[&_strong]:mt-1 max-[760px]:[&_strong]:block"
           variants={fadeUp}
           initial="hidden"
           animate="visible"
@@ -1491,77 +1487,13 @@ export default function TablePOS({
       </AnimatePresence>
       <AnimatePresence>
         {accountOpen && selected && (
-            <motion.div
-              className="modal-scrim account-scrim account-dialog-scrim"
-              variants={overlayVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={requestAccountClose}
-            >
-            <motion.section
-              className="table-account-drawer"
-              ref={accountDialogRef}
-              tabIndex={-1}
-              role="dialog"
-              aria-modal="true"
-              aria-label={`Cuenta de ${displayTableName(selected)}`}
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                className="modal-close"
-                aria-label="Cerrar cuenta"
-                onClick={requestAccountClose}
-              >
-                <X size={19} />
-              </button>
-              <header className="account-heading">
-                <div className="account-heading-content">
-                  <div className="account-heading-title">
-                    <h2>{displayTableName(selected)}</h2>
-                    <button
-                      type="button"
-                      className="icon-btn account-edit-button"
-                      aria-label="Editar mesa"
-                      onClick={() => setEditing(true)}
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    {selected.billRequested && <span className="account-heading-status">Cuenta solicitada</span>}
-                  </div>
-                  <div className="account-heading-meta">
-                    <span className="account-guests"><UsersRound size={15} aria-hidden="true" /> {selected.guests} {selected.guests === 1 ? "persona" : "personas"}</span>
-                    {operator && (
-                      <div className="account-operator" ref={operatorMenuRef}>
-                        <button ref={operatorTriggerRef} type="button" className="account-operator-trigger" aria-label={`Responsable de ${displayTableName(selected)}: ${operator.name}, ${operator.role}`} aria-haspopup="listbox" aria-expanded={operatorMenuOpen} aria-controls="account-operator-menu" onClick={() => setOperatorMenuOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "ArrowDown" && !operatorMenuOpen) { event.preventDefault(); setOperatorMenuOpen(true); } }}>
-                          <UserRound size={15} aria-hidden="true" /><span>{operator.name} <small>· {operator.role}</small></span><ChevronDown size={14} aria-hidden="true" />
-                        </button>
-                        <AnimatePresence>
-                          {operatorMenuOpen && <motion.div id="account-operator-menu" className="account-operator-menu" role="listbox" aria-label="Elegir responsable" initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={transitions.fast}
-                            onKeyDown={(event) => {
-                              const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'));
-                              const index = options.indexOf(document.activeElement as HTMLElement);
-                              const target = event.key === "ArrowDown" ? (index + 1) % options.length : event.key === "ArrowUp" ? (index - 1 + options.length) % options.length : event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : -1;
-                              if (target >= 0 && options.length) { event.preventDefault(); options[target].focus(); }
-                            }}>
-                            {(teamOptions.some((member) => member.id === operator.id) ? teamOptions : [operator, ...teamOptions]).map((member) => <button type="button" role="option" aria-selected={member.id === operator.id} key={member.id} onClick={() => { setOperatorMenuOpen(false); changeOperator(member.id); if (!selected.items.length || member.id === operator.id) requestAnimationFrame(() => operatorTriggerRef.current?.focus({ preventScroll: true })); }}>
-                              <span className="account-operator-initials" aria-hidden="true">{member.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
-                              <span className="account-operator-info"><strong>{member.name}</strong><small>{member.role}</small></span>
-                              {member.id === operator.id && <Check size={15} aria-hidden="true" />}
-                            </button>)}
-                          </motion.div>}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="account-heading-categories" ref={setCategoryContainer} />
-              </header>
-              <div className="account-body">
+          <AccountDialog
+            table={selected} tableName={displayTableName(selected)} operator={operator} teamOptions={teamOptions}
+            operatorMenuOpen={operatorMenuOpen} onOperatorMenuOpenChange={setOperatorMenuOpen}
+            onOperatorChange={changeOperator} onClose={requestAccountClose} onEditTable={() => setEditing(true)}
+            dialogRef={accountDialogRef} operatorMenuRef={operatorMenuRef} operatorTriggerRef={operatorTriggerRef}
+            onCategoryContainerChange={setCategoryContainer}
+          >
                 <PosCatalog products={products} categories={categories} onAddProduct={addProduct} categoryContainer={categoryContainer} />
                 <PosAccountTicket
                   table={selected}
@@ -1583,9 +1515,8 @@ export default function TablePOS({
                   total={total}
                   onOpenPayment={() => { setPayment(""); setPaymentOpen(true); }}
                 />
-              </div>
-            </motion.section>
-            </motion.div>
+
+          </AccountDialog>
         )}
       </AnimatePresence>
       <AnimatePresence>
@@ -1603,81 +1534,25 @@ export default function TablePOS({
       </AnimatePresence>
       <AnimatePresence>
         {accountOpen && selected && (moveWholeTable || (editorLine && editorProduct)) && (
-          <motion.div className="modal-scrim line-editor-scrim" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={() => { if (performance.now() - lineOpenedAtRef.current > 400) setLineEditorId(null); }}>
-            <motion.section ref={lineDialogRef} className={`acrylic-modal line-editor-modal${lineEditorMode === "note" ? " line-item-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="line-editor-title"
-              variants={modalVariants} initial="hidden" animate="visible" exit="exit" onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key !== "Tab") return;
-                const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)"));
-                if (!focusable.length) return;
-                if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus(); }
-                else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus(); }
-              }}>
-              <button className="modal-close" aria-label={moveWholeTable ? "Cerrar traslado de cuenta" : "Cerrar detalle del artículo"} onClick={() => setLineEditorId(null)}><X size={19} /></button>
-              <span className="eyebrow">{moveWholeTable ? "TRASLADO DE CUENTA" : "ARTÍCULO DE LA CUENTA"}</span>
-              <h2 id="line-editor-title">{moveWholeTable ? `Mover ${displayTableName(selected)}` : editorProduct?.name}</h2>
-              <p className="line-editor-subtitle">{moveWholeTable ? `${selected.items.reduce((sum, line) => sum + line.quantity, 0)} artículos · ${money(total)}` : `${editorLine?.quantity} ${editorLine?.quantity === 1 ? "unidad" : "unidades"} · ${money(editorProduct!.price)} por unidad`}</p>
-              {lineEditorMode === "note" && editorLine ? <>
-                <div className="line-item-section">
-                  <div className="line-item-section-heading"><strong><BadgePercent size={16} aria-hidden="true" /> Precio y descuento</strong><span>Por unidad</span></div>
-                <div className="line-price-fields">
-                  <label className="field line-editor-field">Precio
-                    <span className="line-money-input"><span aria-hidden="true">$</span><input aria-label="Precio por unidad ($)" type="number" min="0" step="1" inputMode="numeric" value={linePriceDraft} onDoubleClick={(event) => event.currentTarget.select()} onChange={(event) => setLinePriceDraft(event.target.value)} /></span>
-                  </label>
-                  <label className="field line-editor-field">Descuento
-                    <span className="line-money-input"><span aria-hidden="true">$</span><input aria-label="Descuento por unidad ($)" type="number" min="0" step="1" inputMode="numeric" value={lineDiscountDraft} onChange={(event) => setLineDiscountDraft(event.target.value)} placeholder="0" /></span>
-                  </label>
-                </div>
-                {Number(lineDiscountDraft) > (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft)) && <p className="line-editor-error" role="alert">El descuento no puede superar el precio por unidad.</p>}
-                <div className="line-item-price-summary"><span>Precio final por unidad</span><strong>{money(Math.max(0, (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft) || 0) - (Number(lineDiscountDraft) || 0)))}</strong></div>
-                </div>
-                <label className="field line-editor-field line-item-note"><span className="line-item-label"><Pencil size={15} aria-hidden="true" /> Aclaración</span><span className="line-item-optional">Opcional</span>
-                  <textarea aria-label="Aclaración" maxLength={200} value={lineNoteDraft} onChange={(event) => setLineNoteDraft(event.target.value)} placeholder="Ej. sin azúcar, leche vegetal…" />
-                </label>
-                {editorLine.quantity > 1 && <label className="line-item-quantity"><span><strong><LayoutGrid size={15} aria-hidden="true" /> Aplicar cambios</strong><small>Elegí cuántas unidades modificar</small></span><span className="line-item-quantity-input"><input aria-label="Aplicar a cuántas unidades" type="number" min={1} max={editorLine.quantity} value={lineQuantityDraft} onChange={(event) => setLineQuantityDraft(Math.min(editorLine.quantity, Math.max(1, Math.floor(Number(event.target.value) || 1))))} /><span>de {editorLine.quantity}</span></span></label>}
-                <div className="line-editor-actions">
-                  <button className="button" onClick={() => { setLineEditorMode("move"); setMoveError(""); }}><ArrowRightLeft size={15} /> Mover a otra mesa</button>
-                  <button className="button primary" disabled={Number(lineDiscountDraft) > (linePriceDraft === "" ? editorProduct!.price : Number(linePriceDraft)) || Number(linePriceDraft) < 0 || Number(lineDiscountDraft) < 0} onClick={saveLineNote}><Check size={15} aria-hidden="true" /> Guardar cambios</button>
-                </div>
-              </> : <>
-                <label className="field line-editor-field">Mesa de destino
-                  <select value={moveTargetId} onChange={(event) => { setMoveTargetId(event.target.value); setMoveTargetOperatorId(""); setSourceMovePin(""); setTargetMovePin(""); setMoveError(""); }}>
-                    <option value="">Elegí una mesa</option>
-                    {sectors.map((area) => <optgroup key={area.id} label={area.label}>{tables.filter((table) => table.area === area.id && table.id !== selectedId && (area.id !== "counter" || table.items.length || table.billRequested)).map((table) => <option key={table.id} value={table.id}>{displayTableName(table)} · {table.items.length ? table.billRequested ? "Cuenta solicitada" : "Ocupada" : "Libre"}</option>)}{area.id === "counter" && canOpenCounter && <option value={NEW_COUNTER_TARGET}>Puesto libre 1 · Libre</option>}</optgroup>)}
-                  </select>
-                </label>
-                {!moveWholeTable && editorLine && editorLine.quantity > 1 && <label className="field line-editor-field">Cantidad a mover
-                  <input type="number" min={1} max={editorLine.quantity} value={lineQuantityDraft} onChange={(event) => setLineQuantityDraft(Math.min(editorLine.quantity, Math.max(1, Math.floor(Number(event.target.value) || 1))))} />
-                </label>}
-                {moveTarget && !moveTarget.items.length && !moveWholeTable && <label className="field line-editor-field">Cubiertos de la mesa destino
-                  <input type="number" min={1} max={20} value={moveCovers} onChange={(event) => setMoveCovers(Math.min(20, Math.max(1, Math.floor(Number(event.target.value) || 1))))} />
-                  <small>La mesa se abrirá a nombre de {operator?.name}.</small>
-                </label>}
-                {moveTarget && moveTarget.items.length > 0 && !moveTarget.operatorId && <label className="field line-editor-field">Responsable de la mesa destino
-                  <select value={moveTargetOperatorId} onChange={(event) => { setMoveTargetOperatorId(event.target.value); setTargetMovePin(""); setMoveError(""); }}>
-                    <option value="">Elegí un empleado</option>{teamOptions.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
-                  </select>
-                </label>}
-                {moveTarget?.billRequested && <p className="line-editor-notice">La cuenta solicitada volverá a estar abierta al agregar consumos.</p>}
-                {moveWholeTable && moveTarget && <p className="line-editor-notice">Se trasladan los consumos, los cubiertos y el descuento. {moveTarget.items.length ? "Se sumarán a la cuenta de destino." : `La cuenta quedará a nombre de ${operator?.name}.`}</p>}
-                {!moveWholeTable && moveTarget && selected.discount ? <p className="line-editor-notice">El descuento queda en la mesa de origen y se ajusta si supera el saldo restante.</p> : null}
-                {!moveWholeTable && lineNoteDraft.trim() && <p className="line-editor-note-preview">Aclaración que se moverá: <strong>{lineNoteDraft.trim()}</strong></p>}
-                {moveTarget && sourceNeedsMovePin && <label className="field line-editor-field">Código de {operator?.name}
-                  <input type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={sourceMovePin} onChange={(event) => { setSourceMovePin(event.target.value.replace(/\D/g, "").slice(0, 4)); setMoveError(""); }} />
-                  <small>Confirmá la primera comanda antes de moverla.</small>
-                </label>}
-                {moveTarget && destinationNeedsMovePin && <label className="field line-editor-field">Código de {destinationOwner?.name}
-                  <input type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={targetMovePin} onChange={(event) => { setTargetMovePin(event.target.value.replace(/\D/g, "").slice(0, 4)); setMoveError(""); }} />
-                  <small>Confirmá el responsable de la mesa destino.</small>
-                </label>}
-                {moveError && <p className="line-editor-error" role="alert">{moveError}</p>}
-                <div className="line-editor-actions">
-                  <button className="button" onClick={() => { if (moveWholeTable) setLineEditorId(null); else setLineEditorMode("note"); setMoveError(""); }}>Volver</button>
-                  <button className="button primary" disabled={!moveTarget} onClick={moveLineToTable}>{moveWholeTable ? "Mover cuenta" : "Mover artículo"}</button>
-                </div>
-              </>}
-            </motion.section>
-          </motion.div>
+          <LineEditorDialog
+            lineDialogRef={lineDialogRef}
+            lineOpenedAtRef={lineOpenedAtRef}
+            displayTableName={displayTableName}
+            state={{
+              selected, selectedId, editorLine, editorProduct: editorProduct || undefined,
+              moveWholeTable, lineEditorMode, total, linePriceDraft, lineDiscountDraft,
+              lineNoteDraft, lineQuantityDraft, moveTargetId, moveTarget, moveCovers,
+              moveTargetOperatorId, sourceMovePin, targetMovePin, moveError, sectors,
+              tables, canOpenCounter, operator, teamOptions, destinationOwner,
+              sourceNeedsMovePin, destinationNeedsMovePin,
+            }}
+            actions={{
+              setLineEditorId, setLineEditorMode, setLinePriceDraft, setLineDiscountDraft,
+              setLineNoteDraft, setLineQuantityDraft, saveLineNote, setMoveTargetId,
+              setMoveCovers, setMoveTargetOperatorId, setSourceMovePin, setTargetMovePin,
+              setMoveError, moveLineToTable,
+            }}
+          />
         )}
       </AnimatePresence>
       <AnimatePresence>
