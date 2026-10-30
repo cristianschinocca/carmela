@@ -8,6 +8,21 @@ export const TEAM_ROLES = [
 
 export type TeamRole = (typeof TEAM_ROLES)[number];
 
+export type TeamPay = {
+  basis: "hour" | "day";
+  rate: number;
+  schedule: TeamWorkday[];
+};
+
+export type TeamWorkday = {
+  day: number;
+  start: string;
+  end: string;
+};
+
+type LegacyTeamPay = Omit<TeamPay, "schedule"> & { days: number[]; start: string; end: string };
+type StoredTeamMember = Omit<TeamMember, "pay"> & { pay?: TeamPay | LegacyTeamPay };
+
 export type TeamMember = {
   id: number;
   name: string;
@@ -16,6 +31,29 @@ export type TeamMember = {
   active: boolean;
   clockedIn: boolean;
   lastClock?: string;
+  pay?: TeamPay;
+};
+
+export const workHoursPerDay = ({ start, end }: TeamWorkday) => {
+  const [startHour, startMinute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  return ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60;
+};
+
+export const monthlyPayEstimate = (pay: TeamPay | undefined, month = new Date()) => {
+  if (!pay || pay.rate <= 0 || !pay.schedule.length) return 0;
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const dayCount = new Date(year, monthIndex + 1, 0).getDate();
+  let total = 0;
+  for (let day = 1; day <= dayCount; day++) {
+    const workday = pay.schedule.find((item) => item.day === new Date(year, monthIndex, day).getDay());
+    if (!workday) continue;
+    const hours = workHoursPerDay(workday);
+    if (!Number.isFinite(hours) || hours <= 0) return 0;
+    total += pay.rate * (pay.basis === "hour" ? hours : 1);
+  }
+  return Math.round(total);
 };
 
 export type ClockEntry = {
@@ -46,7 +84,17 @@ const load = <T,>(key: string, fallback: T): T => {
   }
 };
 
-export const loadTeamMembers = () => load(TEAM_STORAGE, defaultTeam);
+const normalizePay = (pay: TeamPay | LegacyTeamPay | undefined): TeamPay | undefined => {
+  if (!pay || "schedule" in pay) return pay;
+  return {
+    basis: pay.basis,
+    rate: pay.rate,
+    schedule: pay.days.map((day) => ({ day, start: pay.start, end: pay.end })),
+  };
+};
+
+export const loadTeamMembers = (): TeamMember[] =>
+  load<StoredTeamMember[]>(TEAM_STORAGE, defaultTeam).map((member) => ({ ...member, pay: normalizePay(member.pay) }));
 export const loadClockEntries = () => load<ClockEntry[]>(CLOCK_STORAGE, []);
 
 export const timeNow = () =>

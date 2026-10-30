@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Package,
+  Boxes,
   Wallet,
   QrCode,
   ChartNoAxesCombined,
@@ -12,7 +13,6 @@ import {
   ArrowUpRight,
   ArrowRight,
   Plus,
-  Bell,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +45,9 @@ import { Metric } from "./components/Operations";
 import TablePOS from "./components/TablePOS";
 import { PaidTablesDialog } from "./components/PaidTablesDialog";
 import { ProductManager } from "./components/ProductManager";
+import { StockManager } from "./components/StockManager";
+import { StockAlerts } from "./components/StockAlerts";
+import { loadStock, productsWithStock, type Stock } from "./stores/inventory";
 import { TeamManager } from "./components/TeamManager";
 import { AttendanceManager } from "./components/AttendanceManager";
 import { SalesReports } from "./components/SalesReports";
@@ -71,6 +74,7 @@ const nav = [
   ["Resumen", LayoutDashboard],
   ["Punto de venta", ShoppingBag],
   ["Productos", Package],
+  ["Stock", Boxes],
   ["Fichaje", Clock3],
   ["Menú digital", QrCode],
   ["Reportes", ChartNoAxesCombined],
@@ -106,6 +110,7 @@ const loadCashExpenses = () => {
 };
 export function App() {
   const [products, setProducts] = useState<Product[]>(loadProducts);
+  const [stock, setStock] = useState<Stock>(loadStock);
   const [categoryList, setCategoryList] = useState<string[]>(loadCategories);
   const [page, setPage] = useState("Resumen");
   const [cashOpen, setCashOpen] = useState(false);
@@ -118,7 +123,6 @@ export function App() {
   const { darkMode, setDarkMode } = useDashboardTheme(publicThemeActive);
   const [side, setSide] = useState(false);
   const [notice, setNotice] = useState("");
-  const [notifications, setNotifications] = useState(false);
   const [period, setPeriod] = useState("Hoy");
   const [selected, setSelected] = useState<Product | null>(null);
   const [handled, setHandled] = useState<number[]>([]);
@@ -188,6 +192,7 @@ export function App() {
     setProducts((current) => current.filter((item) => item.id !== id));
     toast("Producto eliminado de este navegador.");
   };
+  const sellableProducts = productsWithStock(products, stock);
   const reorderProducts = (fromId: number, toId: number) =>
     setProducts((current) => {
       const from = current.findIndex((item) => item.id === fromId),
@@ -257,7 +262,7 @@ export function App() {
       >
         {publicView ? (
           <PublicMenu
-            products={products}
+            products={sellableProducts}
             categories={categoryList}
             onBack={() => {
               setPublicView(false);
@@ -641,7 +646,8 @@ export function App() {
                       </>
                     ) : page === "Punto de venta" ? (
                       <TablePOS
-                        products={products}
+                        products={sellableProducts}
+                        onStockChange={setStock}
                         categories={categoryList}
                         onToast={toast}
                       />
@@ -657,6 +663,8 @@ export function App() {
                         onRenameCategory={renameCategory}
                         onDeleteCategory={deleteCategory}
                       />
+                    ) : page === "Stock" ? (
+                      <StockManager products={products} stock={stock} onStockChange={setStock} onToast={toast} />
                     ) : page === "Menú digital" ? (
                       <div className="menu-admin">
                         <section className="panel">
@@ -791,7 +799,13 @@ export function App() {
               </main>
             </div>
               </div>
-            <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones"><button className="utility-rail-button" aria-label="Abrir caja" aria-pressed={cashOpen && cashMode === "movements"} title="Caja" onClick={() => { setCashMode("movements"); setCashOpen(true); }}><Wallet size={19} /></button><button className="utility-rail-button" aria-label="Abrir arqueo" aria-pressed={cashOpen && cashMode === "count"} title="Arqueo" onClick={() => { setCashMode("count"); setCashOpen(true); }}><ReceiptText size={19} /></button><button className="utility-rail-button" aria-label="Mesas cobradas del día" aria-pressed={salesOpen} title="Mesas cobradas del día" onClick={() => setSalesOpen(true)}><ShoppingBag size={19} /></button></aside>
+            <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones">
+              <StockAlerts products={products} stock={stock} onOpenStock={() => go("Stock")} />
+              <div className="utility-rail-divider" role="separator" />
+              <button className="utility-rail-button" aria-label="Abrir caja" aria-pressed={cashOpen && cashMode === "movements"} title="Caja" onClick={() => { setCashMode("movements"); setCashOpen(true); }}><Wallet size={19} /></button>
+              <button className="utility-rail-button" aria-label="Abrir arqueo" aria-pressed={cashOpen && cashMode === "count"} title="Arqueo" onClick={() => { setCashMode("count"); setCashOpen(true); }}><ReceiptText size={19} /></button>
+              <button className="utility-rail-button" aria-label="Mesas cobradas del día" aria-pressed={salesOpen} title="Mesas cobradas del día" onClick={() => setSalesOpen(true)}><ShoppingBag size={19} /></button>
+            </aside>
           </motion.div>
         )}
       </AnimatePresence>

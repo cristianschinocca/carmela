@@ -37,6 +37,7 @@ import {
   type TeamMember,
 } from "../stores/team";
 import { saveSale } from "../stores/sales";
+import { applySaleToStock, type Stock } from "../stores/inventory";
 import PosCatalog from "./PosCatalog";
 import PosAccountTicket from "./PosAccountTicket";
 import PosPaymentDialog, { type PaymentMethod } from "./PosPaymentDialog";
@@ -70,10 +71,12 @@ export default function TablePOS({
   products,
   categories,
   onToast,
+  onStockChange,
 }: {
   products: Product[];
   categories: string[];
   onToast: (message: string) => void;
+  onStockChange: (stock: Stock) => void;
 }) {
   const [tables, setTables] = useState<Table[]>(loadInitialFloor);
   const [sectors, setSectors] = useState<Sector[]>(loadSectors);
@@ -1223,7 +1226,7 @@ export default function TablePOS({
       (sum, { line, product }) => sum + line.quantity * lineUnitPrice(line, product.price),
       0,
     );
-    saveSale({
+    const sale = {
       id: `${selected.id}-${Date.now()}`,
       tableName: name,
       closedAt,
@@ -1240,7 +1243,9 @@ export default function TablePOS({
         unitPrice: lineUnitPrice(line, product.price),
         ...(line.note ? { note: line.note } : {}),
       })),
-    });
+    };
+    saveSale(sale);
+    onStockChange(applySaleToStock(sale, products));
     if (selected.area === "counter") setTables((current) => current.filter((table) => table.id !== selected.id));
     else update((table) => ({
       ...table,

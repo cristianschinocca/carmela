@@ -1,13 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Check,
   Clock3,
-  LogIn,
-  LogOut,
-  ShieldCheck,
-  UserCheck,
-  Users,
   X,
 } from "lucide-react";
 import { modalVariants, overlayVariants, press } from "../motion";
@@ -34,7 +29,6 @@ export function AttendanceManager() {
 
   const activeTeam = team.filter((member) => member.active);
   const onShift = activeTeam.filter((member) => member.clockedIn);
-  const offShift = activeTeam.filter((member) => !member.clockedIn);
 
   const clock = (member: TeamMember) => {
     const now = timeNow();
@@ -63,76 +57,34 @@ export function AttendanceManager() {
 
   return (
     <div className="attendance-page">
-      <div className="team-metrics attendance-metrics">
-        <section>
-          <span className="round-icon"><UserCheck size={19} /></span>
-          <div><small>Trabajando ahora</small><strong>{onShift.length}</strong></div>
-        </section>
-        <section>
-          <span className="round-icon"><Users size={19} /></span>
-          <div><small>Fuera de turno</small><strong>{offShift.length}</strong></div>
-        </section>
-        <section>
-          <span className="round-icon"><ShieldCheck size={19} /></span>
-          <div><small>Personal habilitado</small><strong>{activeTeam.length}</strong></div>
-        </section>
-      </div>
+      <section className="panel attendance-action">
+        <span className="attendance-action-icon"><Clock3 size={23} /></span>
+        <div className="attendance-action-copy">
+          <span className="eyebrow">CONTROL DE TURNO</span>
+          <h2>Marcá tu entrada o salida</h2>
+          <p>Usá tu PIN personal de cuatro números. El fichador registra el movimiento según tu turno.</p>
+        </div>
+        <motion.button whileTap={press} className="button primary attendance-open" onClick={() => setShowClock(true)}>
+          <Clock3 size={17} /> Abrir fichador
+        </motion.button>
+      </section>
 
-      <div className="attendance-layout">
-        <section className="panel attendance-kiosk">
-          <div className="attendance-kiosk-copy">
-            <span className="attendance-kiosk-icon"><Clock3 size={28} /></span>
-            <span className="eyebrow">CONTROL DE TURNO</span>
-            <h2>Registrá tu entrada o salida</h2>
-            <p>Ingresá con tu código personal. El sistema detecta automáticamente el movimiento correspondiente.</p>
-            <motion.button
-              whileTap={press}
-              className="button primary attendance-open"
-              onClick={() => setShowClock(true)}
-            >
-              <Clock3 size={18} /> Abrir fichaje
-            </motion.button>
+      <section className="panel attendance-team">
+        <div className="attendance-team-head">
+          <div>
+            <h2>Personal en turno</h2>
+            <p>Quiénes están trabajando ahora</p>
           </div>
-          <div className="on-shift-list">
-            <div className="panel-heading">
-              <div><h2>En turno</h2><p>Personal trabajando en este momento.</p></div>
-              <span className="live"><i /> {onShift.length} activos</span>
-            </div>
-            {onShift.length ? onShift.map((member) => (
-              <div className="on-shift-person" key={member.id}>
-                <span>{member.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>
-                <div><strong>{member.name}</strong><small>{member.role} · Desde {member.lastClock}</small></div>
-              </div>
-            )) : (
-              <div className="empty compact"><Clock3 size={25} /><h3>No hay personas en turno</h3></div>
-            )}
+          <span className="attendance-count"><i /> {onShift.length} de {activeTeam.length}</span>
+        </div>
+        {onShift.length ? <div className="attendance-roster-list">{onShift.map((member) => (
+          <div className="attendance-roster-person" key={member.id}>
+            <span className="attendance-avatar">{member.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>
+            <strong>{member.name}</strong>
+            <small>Desde {member.lastClock}</small>
           </div>
-        </section>
-
-        <aside className="panel attendance-panel attendance-history-panel">
-          <div className="panel-heading">
-            <div><h2>Actividad reciente</h2><p>Entradas y salidas registradas.</p></div>
-          </div>
-          {entries.length ? (
-            <div className="clock-history">
-              {entries.slice(0, 10).map((entry) => (
-                <motion.div layout key={entry.id}>
-                  <span className={`clock-kind ${entry.type === "Entrada" ? "in" : "out"}`}>
-                    {entry.type === "Entrada" ? <LogIn size={15} /> : <LogOut size={15} />}
-                  </span>
-                  <div><strong>{entry.name}</strong><small>{entry.type} · {entry.at}</small></div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty compact">
-              <Clock3 size={26} />
-              <h3>Todavía no hay movimientos</h3>
-              <p>Los próximos fichajes aparecerán acá.</p>
-            </div>
-          )}
-        </aside>
-      </div>
+        ))}</div> : <p className="attendance-roster-empty">Todavía no hay personas en turno.</p>}
+      </section>
 
       <AnimatePresence>
         {showClock && (
@@ -155,14 +107,20 @@ function ClockModal({
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ name: string; type: "Entrada" | "Salida"; time: string } | null>(null);
+  const submitted = useRef(false);
+  const modalRef = useRef<HTMLElement>(null);
+
+  useEffect(() => { modalRef.current?.focus(); }, []);
 
   const submit = () => {
+    if (submitted.current) return;
     const member = team.find((item) => item.active && item.pin === pin);
     if (!member) {
       setError("Código incorrecto o usuario inactivo.");
       setPin("");
       return;
     }
+    submitted.current = true;
     const type = onClock(member);
     setResult({ name: member.name, type, time: timeNow() });
   };
@@ -175,9 +133,10 @@ function ClockModal({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      else if (result) return;
       else if (/^\d$/.test(event.key)) digit(event.key);
       else if (event.key === "Backspace") setPin((current) => current.slice(0, -1));
-      else if (event.key === "Enter" && pin.length === 4) submit();
+      else if (event.key === "Enter" && pin.length === 4) { event.preventDefault(); submit(); }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -185,13 +144,13 @@ function ClockModal({
 
   return (
     <motion.div className="modal-backdrop" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={onClose}>
-      <motion.section className="product-modal clock-modal" variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="clock-title">
+      <motion.section ref={modalRef} tabIndex={-1} className="product-modal clock-modal" variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="clock-title">
         <button className="icon-btn close-modal" aria-label="Cerrar fichaje" onClick={onClose}><X size={20} /></button>
         {result ? (
           <div className="clock-result">
             <span className="success-ring"><Check size={28} /></span>
             <span className="eyebrow">FICHAJE REGISTRADO</span>
-            <h2>{result.type} · {result.time}</h2>
+            <h2 id="clock-title">{result.type} · {result.time}</h2>
             <p>{result.name}, tu movimiento quedó guardado en este dispositivo.</p>
             <button className="button primary full" onClick={onClose}>Listo</button>
           </div>
@@ -200,8 +159,8 @@ function ClockModal({
             <div className="clock-heading">
               <span className="round-icon"><Clock3 size={21} /></span>
               <span className="eyebrow">FICHAJE</span>
-              <h2 id="clock-title">Ingresá tu código</h2>
-              <p>Usá tu PIN personal de cuatro números.</p>
+              <h2 id="clock-title">Ingresá tu PIN</h2>
+              <p>Cuatro números para registrar tu turno.</p>
             </div>
             <div className="pin-dots" aria-label={`${pin.length} números ingresados`}>
               {[0, 1, 2, 3].map((index) => <i className={pin.length > index ? "filled" : ""} key={index} />)}
@@ -215,7 +174,6 @@ function ClockModal({
               <motion.button whileTap={press} onClick={() => digit("0")}>0</motion.button>
               <button aria-label="Confirmar fichaje" className="pin-submit" disabled={pin.length !== 4} onClick={submit}><Check size={19} /></button>
             </div>
-            <p className="clock-demo">Demo: Camila 4829 · Tomás 2468</p>
           </>
         )}
       </motion.section>
