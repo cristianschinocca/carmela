@@ -1,9 +1,10 @@
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
+import { enableDemoSession } from './demo-session.mjs';
 fs.mkdirSync('artifacts',{recursive:true});
 const base=process.env.BASE_URL||'http://127.0.0.1:5173';
 const browser=await chromium.launch();
-const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await page.evaluate(()=>localStorage.clear());await page.reload();
+const page=await browser.newPage();await enableDemoSession(page);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await page.evaluate(()=>localStorage.clear());await page.reload();
 for(const [name,width,height] of [['desktop',1920,1080],['notebook',1366,768],['compact',1280,720],['scaled125',1093,614],['scaled150',853,480],['tablet',768,1024],['mobile',390,844]]){
  await page.setViewportSize({width,height});await page.goto(base);await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(350);
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error('Overflow: '+name);

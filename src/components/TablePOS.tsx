@@ -44,18 +44,32 @@ import AccountDialog from "./pos-dialogs/AccountDialog";
 import {
   KEY, newLineId, NEW_COUNTER_TARGET, SECTORS_KEY, FREEFORM_MIN_HEIGHT, SECTOR_GAP, COUNTER_LIMIT,
   MAX_SECTOR_HEIGHT, TABLE_SLOT_LIMIT, tableGridMetrics,
-  materializeTableSlots, loadSectors, makeDefaultMosaic, sectorRect,
-  sectorsTouch, sectorObstacles, moveSectorRect, resizeSectorRect,
+  materializeTableSlots, compactCounterSlots, loadSectors, makeDefaultMosaic, sectorRect,
+  sectorsTouch, sectorObstacles, moveSectorRect, resizeSectorAndPush,
   tablePosition, loadInitialFloor, SECTOR_TABLE_LIMIT,
   type Line, type Area, type SectorLayout, type Sector, type Table,
   type PinPurpose, type SectorRect,
 } from "../pos/floorModel";
 import {
   allocateCounterTableNumber,
+  ensureCounterTableSequenceAtLeast,
+  previewCounterTableNumber,
 } from "../stores/counterSequence";
 
 const lineUnitPrice = (line: Line, productPrice: number) => Math.max(0, (line.unitPrice ?? productPrice) - (line.unitDiscount ?? 0));
 const sameLinePrice = (a: Line, b: Line) => a.unitPrice === b.unitPrice && (a.unitDiscount || 0) === (b.unitDiscount || 0);
+type SectorResizeMetrics = { widthOffset: number; chromeHeight: number; rowHeight: number; rowGap: number; lastSlot: number };
+type SectorDragGesture = {
+  id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout;
+  latest: SectorLayout; boardWidth: number; moved: boolean; autoScrollOffset: number;
+  obstacles: SectorRect[]; element: HTMLElement; pending: { x: number; y: number } | null; frame: number | null;
+};
+type SectorResizeGesture = {
+  id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout;
+  sectors: Sector[]; latest: Sector[]; boardWidth: number; edge: -1 | 1; moved: boolean;
+  metrics: SectorResizeMetrics; elements: Map<string, HTMLElement>;
+  pending: { x: number; y: number } | null; frame: number | null; autoScrollOffset: number;
+};
 const floorEditGroupClassName = "flex min-w-0 flex-wrap items-center gap-[7px] max-[760px]:max-w-full [&_.button]:!min-h-9 [&_.button]:!px-[11px] [&_.button]:!py-2";
 const makeCounterTable = (tables: Table[], id = `counter-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`): Table => {
   const occupied = new Set(materializeTableSlots(tables).filter((table) => table.area === "counter").map((table) => table.slot));
@@ -91,14 +105,16 @@ export default function TablePOS({
   const suppressTableClickRef = useRef(false);
   const [draggingSectorId, setDraggingSectorId] = useState<string | null>(null);
   const [resizingSectorId, setResizingSectorId] = useState<string | null>(null);
+  const [sectorGestureSettling, setSectorGestureSettling] = useState(false);
+  const sectorGestureFrameRef = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
   const boardRef = useRef<HTMLDivElement>(null);
   const accountDialogRef = useRef<HTMLElement>(null);
   const [categoryContainer, setCategoryContainer] = useState<HTMLDivElement | null>(null);
   const [boardHeight, setBoardHeight] = useState(400);
-  const sectorDragRef = useRef<{ id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout; lastLayout: SectorLayout; boardWidth: number; moved: boolean } | null>(null);
-  const resizeRef = useRef<{ id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout; boardWidth: number; edge: -1 | 1; moved: boolean } | null>(null);
-  const scrollGestureRef = useRef<{ pointerId: number; mode: "drag" | "resize"; clientX: number; clientY: number; frame: number } | null>(null);
+  const sectorDragRef = useRef<SectorDragGesture | null>(null);
+  const resizeRef = useRef<SectorResizeGesture | null>(null);
+  const scrollGestureRef = useRef<{ pointerId: number; mode: "drag" | "resize"; clientX: number; clientY: number; frame: number; lastPointerMoveAt: number; verticalDirection: number } | null>(null);
   const suppressSectorClick = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -166,6 +182,7 @@ export default function TablePOS({
   const normalizedLayoutRef = useRef(false);
   const autoFitWidthRef = useRef<number | null>(null);
   const reconcileBoard = () => {
+    if (resizeRef.current) return;
     const board = boardRef.current;
     if (!board) return;
     const compact = window.innerWidth <= 1100 || board.clientWidth < 760;
@@ -293,7 +310,7 @@ export default function TablePOS({
     }));
     setBoardHeight((height) => Math.abs(height - nextHeight) < 1 ? height : nextHeight);
   };
-  useLayoutEffect(() => { reconcileBoard(); }, [sectors, layoutMode, tables, tableColumns]);
+  useLayoutEffect(() => { reconcileBoard(); }, [sectors, layoutMode, tables, tableColumns, resizingSectorId]);
   useLayoutEffect(() => {
     const board = boardRef.current;
     if (!board) return;
@@ -585,7 +602,7 @@ export default function TablePOS({
     onToast(`${member.name} quedó a cargo de ${selected ? displayTableName(selected) : "la mesa"}.`);
   };
   const cancelEmployeeSelection = () => {
-    if (selected?.area === "counter" && !selected.items.length) setTables((current) => current.filter((table) => table.id !== selected.id));
+    if (selected?.area === "counter" && !selected.items.length) setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
     setEmployeePickerOpen(false);
     setSelectedId(null);
   };
@@ -604,7 +621,7 @@ export default function TablePOS({
     const guests = Math.min(20, Math.max(1, Math.floor(coversDraft) || 1));
     const counterTurnNumber =
       selected.area === "counter" && !selected.counterTurnNumber
-        ? allocateCounterTableNumber(
+        ? previewCounterTableNumber(
             tables
               .filter((table) => table.area === "counter")
               .map((table) => table.counterTurnNumber || 0),
@@ -631,7 +648,7 @@ export default function TablePOS({
       return;
     }
     if (selected?.area === "counter" && !selected.items.length)
-      setTables((current) => current.filter((table) => table.id !== selected.id));
+      setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
     setAccountOpen(false);
     setOperator(null);
   };
@@ -684,6 +701,8 @@ export default function TablePOS({
   };
   const addProduct = (productId: number) => {
     const lineId = newLineId();
+    if (selected?.area === "counter" && selected.counterTurnNumber)
+      ensureCounterTableSequenceAtLeast(selected.counterTurnNumber);
     const counterTurnNumber =
       selected?.area === "counter" && !selected.counterTurnNumber
         ? allocateCounterTableNumber(
@@ -928,28 +947,65 @@ export default function TablePOS({
     setActiveArea(area);
     onToast(`${selected.name} se movió a ${target.label}.`);
   };
+  const applySectorDrag = () => {
+    const drag = sectorDragRef.current;
+    if (!drag?.pending) return;
+    drag.frame = null;
+    const { x: clientX, y: clientY } = drag.pending;
+    drag.pending = null;
+    const dx = clientX - drag.x;
+    const dy = clientY + window.scrollY - drag.pageY - drag.autoScrollOffset;
+    if (Math.abs(dx) + Math.abs(dy) < 3 && !drag.moved) return;
+    drag.moved = true;
+    const previous = sectorRect(drag.latest, drag.boardWidth);
+    const next = moveSectorRect(previous, drag.layout.x * drag.boardWidth + dx, drag.layout.y + dy, drag.obstacles, drag.boardWidth);
+    drag.latest = { ...drag.latest, x: next.x / drag.boardWidth, y: Math.round(next.y) };
+    drag.element.style.setProperty("--free-x", `${drag.latest.x * 100}%`);
+    drag.element.style.setProperty("--free-y", `${drag.latest.y}px`);
+    drag.element.classList.remove("auto-fit");
+    boardRef.current?.style.setProperty("--floor-board-height", `${Math.max(boardHeight, drag.latest.y + drag.latest.height + 16) + window.innerHeight}px`);
+  };
   const updateSectorDrag = (clientX: number, clientY: number) => {
     const drag = sectorDragRef.current;
     if (!drag) return;
-    const dx = clientX - drag.x;
-    const dy = clientY + window.scrollY - drag.pageY;
-    if (Math.abs(dx) + Math.abs(dy) < 3 && !drag.moved) return;
-    const firstMove = !drag.moved;
-    drag.moved = true;
-    setSectors((current) => {
-      const previous = sectorRect(drag.lastLayout, drag.boardWidth);
-      const next = moveSectorRect(previous, drag.layout.x * drag.boardWidth + dx, drag.layout.y + dy, sectorObstacles(current, drag.id, drag.boardWidth), drag.boardWidth);
-      drag.lastLayout = { ...drag.lastLayout, x: next.x / drag.boardWidth, y: Math.round(next.y) };
-      return current.map((sector) => sector.id === drag.id && sector.layout
-        ? { ...sector, layout: drag.lastLayout, autoFit: false }
-        : firstMove ? { ...sector, autoFit: false } : sector);
-    });
+    drag.pending = { x: clientX, y: clientY };
+    if (drag.frame === null) drag.frame = requestAnimationFrame(applySectorDrag);
   };
-  const updateSectorResize = (clientX: number, clientY: number) => {
+  const sectorResizeMetrics = (id: string): SectorResizeMetrics | null => {
+    const element = Array.from(boardRef.current?.querySelectorAll<HTMLElement>(".floor-sector") || [])
+      .find((sector) => sector.dataset.sectorId === id);
+    const list = element?.querySelector<HTMLElement>(".floor-sector-tables");
+    const head = element?.querySelector<HTMLElement>(".floor-sector-head");
+    if (!element || !list || !head) return null;
+
+    const styles = getComputedStyle(element);
+    const listStyles = getComputedStyle(list);
+    const visible = tables.filter((table) => table.area === id && (id !== "counter" || table.items.length || table.billRequested));
+    return {
+      widthOffset: list.clientWidth - element.getBoundingClientRect().width,
+      chromeHeight: parseFloat(styles.paddingTop) + head.offsetHeight +
+        parseFloat(getComputedStyle(head).marginBottom) + parseFloat(styles.paddingBottom) + 4,
+      rowHeight: parseFloat(listStyles.gridAutoRows) || 56,
+      rowGap: parseFloat(listStyles.rowGap) || 11,
+      lastSlot: Math.max(-1, ...visible.map((table, index) => table.slot ?? index)),
+    };
+  };
+  const sectorGridColumns = (metrics: SectorResizeMetrics, width: number) =>
+    tableGridMetrics(Math.max(0, width + metrics.widthOffset)).columns;
+  const minimumSectorHeight = (metrics: SectorResizeMetrics, width: number) => {
+    const rows = Math.floor(metrics.lastSlot / sectorGridColumns(metrics, width)) + 1;
+    return Math.min(MAX_SECTOR_HEIGHT, Math.max(FREEFORM_MIN_HEIGHT, Math.ceil(
+      metrics.chromeHeight + (rows ? rows * metrics.rowHeight + (rows - 1) * metrics.rowGap : 0),
+    )));
+  };
+  const applySectorResize = () => {
     const resize = resizeRef.current;
-    if (!resize) return;
-    if (Math.abs(clientX - resize.x) + Math.abs(clientY + window.scrollY - resize.pageY) < 3 && !resize.moved) return;
-    const firstMove = !resize.moved;
+    if (!resize?.pending) return;
+    resize.frame = null;
+    const { x: clientX, y: clientY } = resize.pending;
+    resize.pending = null;
+    const pointerDeltaY = clientY + window.scrollY - resize.pageY - resize.autoScrollOffset;
+    if (Math.abs(clientX - resize.x) + Math.abs(pointerDeltaY) < 3 && !resize.moved) return;
     resize.moved = true;
     const deltaX = (clientX - resize.x) / resize.boardWidth;
     const minimumWidth = Math.min(1, Math.max(220 / resize.boardWidth, 0.16));
@@ -963,12 +1019,33 @@ export default function TablePOS({
       x = Math.max(0, Math.min(right - minimumWidth, resize.layout.x + deltaX));
       width = right - x;
     }
-    const height = Math.max(FREEFORM_MIN_HEIGHT, Math.min(MAX_SECTOR_HEIGHT, Math.round(resize.layout.height + clientY + window.scrollY - resize.pageY)));
-    setSectors((current) => current.map((sector) => {
-      if (sector.id !== resize.id || !sector.layout) return firstMove ? { ...sector, autoFit: false } : sector;
-      const next = resizeSectorRect(sectorRect(resize.layout, resize.boardWidth), { x: x * resize.boardWidth, y: resize.layout.y, width: width * resize.boardWidth, height }, sectorObstacles(current, resize.id, resize.boardWidth), resize.boardWidth);
-      return { ...sector, autoFit: false, layout: { ...sector.layout, x: next.x / resize.boardWidth, width: next.width / resize.boardWidth, height: next.height } };
-    }));
+    const height = Math.max(FREEFORM_MIN_HEIGHT, Math.min(MAX_SECTOR_HEIGHT, Math.round(resize.layout.height + pointerDeltaY)));
+    const targetWidth = width * resize.boardWidth;
+    const minimumHeight = minimumSectorHeight(resize.metrics, Math.min(targetWidth, resize.layout.width * resize.boardWidth));
+    resize.latest = resizeSectorAndPush(resize.sectors, resize.id, {
+      x: x * resize.boardWidth, y: resize.layout.y, width: targetWidth, height,
+    }, resize.boardWidth, minimumHeight);
+    for (const sector of resize.latest) {
+      if (!sector.layout) continue;
+      const element = resize.elements.get(sector.id);
+      if (!element) continue;
+      element.style.setProperty("--free-x", `${sector.layout.x * 100}%`);
+      element.style.setProperty("--free-y", `${sector.layout.y}px`);
+      element.style.setProperty("--free-width", `${sector.layout.width * 100}%`);
+      element.style.setProperty("--free-height", `${sector.layout.height}px`);
+      element.classList.remove("auto-fit");
+    }
+    const resized = resize.latest.find((sector) => sector.id === resize.id);
+    const columns = sectorGridColumns(resize.metrics, (resized?.layout?.width || width) * resize.boardWidth);
+    resize.elements.get(resize.id)?.querySelector<HTMLElement>(".floor-sector-tables")?.style.setProperty("--table-columns", String(columns));
+    const boardHeight = Math.max(300, ...resize.latest.map((sector) => (sector.layout?.y || 0) + (sector.layout?.height || 0) + 16));
+    boardRef.current?.style.setProperty("--floor-board-height", `${boardHeight + window.innerHeight}px`);
+  };
+  const updateSectorResize = (clientX: number, clientY: number) => {
+    const resize = resizeRef.current;
+    if (!resize) return;
+    resize.pending = { x: clientX, y: clientY };
+    if (resize.frame === null) resize.frame = requestAnimationFrame(applySectorResize);
   };
   const stopGestureScroll = () => {
     if (scrollGestureRef.current) cancelAnimationFrame(scrollGestureRef.current.frame);
@@ -984,36 +1061,70 @@ export default function TablePOS({
     const edge = 84;
     const bottom = window.innerHeight - gesture.clientY;
     const direction = gesture.clientY < edge ? -1 : bottom < edge ? 1 : 0;
-    if (direction) {
+    if (direction && direction === gesture.verticalDirection && performance.now() - gesture.lastPointerMoveAt < 100) {
       const distance = direction < 0 ? gesture.clientY : bottom;
       const speed = direction * Math.max(4, Math.min(22, (edge - distance) * .28));
       const previousY = window.scrollY;
       window.scrollBy(0, speed);
       if (window.scrollY !== previousY) {
-        if (gesture.mode === "drag") updateSectorDrag(gesture.clientX, gesture.clientY);
-        else updateSectorResize(gesture.clientX, gesture.clientY);
+        if (gesture.mode === "drag" && sectorDragRef.current) sectorDragRef.current.autoScrollOffset += window.scrollY - previousY;
+        if (gesture.mode === "resize" && resizeRef.current) resizeRef.current.autoScrollOffset += window.scrollY - previousY;
       }
     }
     gesture.frame = requestAnimationFrame(tickGestureScroll);
   };
   const startGestureScroll = (pointerId: number, mode: "drag" | "resize", clientX: number, clientY: number) => {
     stopGestureScroll();
-    scrollGestureRef.current = { pointerId, mode, clientX, clientY, frame: requestAnimationFrame(tickGestureScroll) };
+    scrollGestureRef.current = { pointerId, mode, clientX, clientY, frame: requestAnimationFrame(tickGestureScroll), lastPointerMoveAt: 0, verticalDirection: 0 };
   };
-  useEffect(() => () => stopGestureScroll(), []);
+  const trackGesturePointer = (pointerId: number, clientX: number, clientY: number) => {
+    const gesture = scrollGestureRef.current;
+    if (!gesture || gesture.pointerId !== pointerId) return;
+    const deltaY = clientY - gesture.clientY;
+    if (Math.abs(deltaY) > 1) {
+      gesture.verticalDirection = Math.sign(deltaY);
+      gesture.lastPointerMoveAt = performance.now();
+    }
+    gesture.clientX = clientX;
+    gesture.clientY = clientY;
+  };
+  const beginSectorGesture = () => {
+    if (sectorGestureFrameRef.current !== null) cancelAnimationFrame(sectorGestureFrameRef.current);
+    sectorGestureFrameRef.current = null;
+    setSectorGestureSettling(true);
+  };
+  const settleSectorGesture = () => {
+    sectorGestureFrameRef.current = requestAnimationFrame(() => {
+      sectorGestureFrameRef.current = requestAnimationFrame(() => {
+        setSectorGestureSettling(false);
+        sectorGestureFrameRef.current = null;
+      });
+    });
+  };
+  useEffect(() => () => {
+    stopGestureScroll();
+    if (sectorGestureFrameRef.current !== null) cancelAnimationFrame(sectorGestureFrameRef.current);
+  }, []);
   const startSectorDrag = (event: ReactPointerEvent<HTMLButtonElement>, sector: Sector) => {
     const board = boardRef.current;
-    if (!layoutMode || !board || board.clientWidth < 760 || !sector.layout) return;
+    const element = event.currentTarget.closest<HTMLElement>(".floor-sector");
+    if (!layoutMode || !board || board.clientWidth < 760 || !sector.layout || !element) return;
     sectorDragRef.current = {
       id: sector.id,
       pointerId: event.pointerId,
       x: event.clientX,
       pageY: event.clientY + window.scrollY,
       layout: sector.layout,
-      lastLayout: sector.layout,
+      latest: sector.layout,
       boardWidth: board.clientWidth,
       moved: false,
+      autoScrollOffset: 0,
+      obstacles: sectorObstacles(sectorsRef.current, sector.id, board.clientWidth),
+      element,
+      pending: null,
+      frame: null,
     };
+    beginSectorGesture();
     suppressSectorClick.current = false;
     setActiveArea(sector.id);
     setSelectedId(null);
@@ -1024,19 +1135,26 @@ export default function TablePOS({
   const moveSectorDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = sectorDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    if (scrollGestureRef.current?.pointerId === event.pointerId) {
-      scrollGestureRef.current.clientX = event.clientX;
-      scrollGestureRef.current.clientY = event.clientY;
-    }
+    trackGesturePointer(event.pointerId, event.clientX, event.clientY);
     updateSectorDrag(event.clientX, event.clientY);
   };
   const finishSectorDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = sectorDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+    if (event.type === "pointerup") drag.pending = { x: event.clientX, y: event.clientY };
+    applySectorDrag();
     suppressSectorClick.current = drag.moved;
     sectorDragRef.current = null;
     stopGestureScroll();
     setDraggingSectorId(null);
+    settleSectorGesture();
+    if (drag.moved) {
+      setSectors((current) => current.map((sector) => sector.id === drag.id
+        ? { ...sector, layout: drag.latest, autoFit: false }
+        : sector.autoFit ? { ...sector, autoFit: false } : sector));
+      setBoardHeight((height) => Math.max(height, drag.latest.y + drag.latest.height + 16));
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const moveSectorWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, sector: Sector) => {
@@ -1057,16 +1175,27 @@ export default function TablePOS({
   const startSectorResize = (event: ReactPointerEvent<HTMLButtonElement>, sector: Sector, edge: -1 | 1) => {
     const board = boardRef.current;
     if (!sector.layout || !board || board.clientWidth < 760) return;
+    const metrics = sectorResizeMetrics(sector.id);
+    if (!metrics) return;
     resizeRef.current = {
       id: sector.id,
       x: event.clientX,
       pageY: event.clientY + window.scrollY,
       layout: sector.layout,
+      sectors: sectorsRef.current,
+      latest: sectorsRef.current,
       boardWidth: board.clientWidth,
       pointerId: event.pointerId,
       edge,
       moved: false,
+      autoScrollOffset: 0,
+      metrics,
+      elements: new Map(Array.from(board.querySelectorAll<HTMLElement>(".floor-sector"))
+        .map((element) => [element.dataset.sectorId!, element])),
+      pending: null,
+      frame: null,
     };
+    beginSectorGesture();
     setActiveArea(sector.id);
     setSelectedId(null);
     setResizingSectorId(sector.id);
@@ -1078,17 +1207,25 @@ export default function TablePOS({
   const moveSectorResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const resize = resizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
-    if (scrollGestureRef.current?.pointerId === event.pointerId) {
-      scrollGestureRef.current.clientX = event.clientX;
-      scrollGestureRef.current.clientY = event.clientY;
-    }
+    trackGesturePointer(event.pointerId, event.clientX, event.clientY);
     updateSectorResize(event.clientX, event.clientY);
   };
   const finishSectorResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (resizeRef.current?.pointerId !== event.pointerId) return;
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    if (resize.frame !== null) cancelAnimationFrame(resize.frame);
+    if (event.type === "pointerup") resize.pending = { x: event.clientX, y: event.clientY };
+    applySectorResize();
     resizeRef.current = null;
     stopGestureScroll();
     setResizingSectorId(null);
+    settleSectorGesture();
+    if (resize.moved) {
+      const targetWidth = (resize.latest.find((sector) => sector.id === resize.id)?.layout?.width || resize.layout.width) * resize.boardWidth;
+      setSectors(resize.latest);
+      setTableColumns((current) => ({ ...current, [resize.id]: sectorGridColumns(resize.metrics, targetWidth) }));
+      setBoardHeight(Math.max(300, ...resize.latest.map((sector) => (sector.layout?.y || 0) + (sector.layout?.height || 0) + 16)));
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const resizeSectorWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, sector: Sector) => {
@@ -1098,15 +1235,16 @@ export default function TablePOS({
     if (!deltaWidth && !deltaHeight) return;
     event.preventDefault();
     const boardWidth = boardRef.current.clientWidth;
-    setSectors((current) => current.map((item) => {
-      if (item.id !== sector.id || !item.layout) return item;
-      const width = Math.max(220 / boardWidth, Math.min(1, item.layout.width + deltaWidth / boardWidth));
-      const next = resizeSectorRect(sectorRect(item.layout, boardWidth), {
-        x: item.layout.x * boardWidth, y: item.layout.y, width: width * boardWidth,
+    setSectors((current) => {
+      const item = current.find((candidate) => candidate.id === sector.id);
+      if (!item?.layout) return current;
+      const width = Math.max(220, Math.min(boardWidth, item.layout.width * boardWidth + deltaWidth));
+      const metrics = sectorResizeMetrics(sector.id);
+      return resizeSectorAndPush(current, sector.id, {
+        x: item.layout.x * boardWidth, y: item.layout.y, width,
         height: Math.max(FREEFORM_MIN_HEIGHT, Math.min(MAX_SECTOR_HEIGHT, item.layout.height + deltaHeight)),
-      }, sectorObstacles(current, sector.id, boardWidth), boardWidth);
-      return { ...item, layout: { ...item.layout, x: next.x / boardWidth, width: next.width / boardWidth, height: next.height } };
-    }).map((item) => ({ ...item, autoFit: false })));
+      }, boardWidth, metrics ? minimumSectorHeight(metrics, Math.min(width, item.layout.width * boardWidth)) : FREEFORM_MIN_HEIGHT);
+    });
   };
   const slotAtPointer = (area: Area, clientX: number, clientY: number) => {
     const sector = Array.from(boardRef.current?.querySelectorAll<HTMLElement>(".floor-sector") || [])
@@ -1242,7 +1380,7 @@ export default function TablePOS({
     };
     saveSale(sale);
     onStockChange(applySaleToStock(sale, products));
-    if (selected.area === "counter") setTables((current) => current.filter((table) => table.id !== selected.id));
+    if (selected.area === "counter") setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
     else update((table) => ({
       ...table,
       items: [],
@@ -1398,7 +1536,7 @@ export default function TablePOS({
             const sectorStyle = isFreeform && area.layout
               ? { "--free-x": `${area.layout.x * 100}%`, "--free-y": `${area.layout.y}px`, "--free-width": `${area.layout.width * 100}%`, "--free-height": `${area.layout.height}px` }
               : { "--sector-columns": area.columns, "--sector-start": area.start, "--sector-min-height": `${area.minHeight}px` };
-            return <motion.section key={area.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !reducedMotion} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ ...transitions.fast, layout: transitions.base }} data-sector-id={area.id} className={`floor-sector${area.autoFit ? " auto-fit" : ""}${activeArea === area.id && layoutMode ? " current" : ""}${area.id === "counter" && counterHovered ? " hovered" : ""}${layoutMode ? " editing" : ""}${draggingSectorId === area.id ? " dragging" : ""}${resizingSectorId === area.id ? " resizing" : ""}`}
+            return <motion.section key={area.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !sectorGestureSettling && !reducedMotion} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ ...transitions.fast, layout: transitions.base }} data-sector-id={area.id} className={`floor-sector${area.autoFit ? " auto-fit" : ""}${activeArea === area.id && layoutMode ? " current" : ""}${area.id === "counter" && counterHovered ? " hovered" : ""}${layoutMode ? " editing" : ""}${draggingSectorId === area.id ? " dragging" : ""}${resizingSectorId === area.id ? " resizing" : ""}`}
               style={sectorStyle as CSSProperties}
               onMouseEnter={(event) => { if (area.id === "counter") { pointerPositionRef.current = { x: event.clientX, y: event.clientY }; setCounterHovered(true); } }}
               onMouseLeave={() => { if (area.id === "counter") setCounterHovered(false); }}
@@ -1428,7 +1566,7 @@ export default function TablePOS({
                   const status = table.billRequested && amount ? "billing" : amount ? "occupied" : "free";
                   const slot = table.slot ?? index;
                   const columns = tableColumns[area.id] || 1;
-                  return <motion.button key={table.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !reducedMotion ? "position" : false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ ...transitions.fast, layout: transitions.fast }} className={`floor-table ${status}${selectedId === table.id && !selectingTables ? " selected" : ""}${selectedTableIds.includes(table.id) ? " bulk-selected" : ""}${dropTarget?.area === area.id && dropTarget.slot === slot ? " drop-target" : ""}`} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={layoutMode ? undefined : press}
+                  return <motion.button key={table.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !sectorGestureSettling && !reducedMotion ? "position" : false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ ...transitions.fast, layout: transitions.fast }} className={`floor-table ${status}${selectedId === table.id && !selectingTables ? " selected" : ""}${selectedTableIds.includes(table.id) ? " bulk-selected" : ""}${dropTarget?.area === area.id && dropTarget.slot === slot ? " drop-target" : ""}`} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={layoutMode ? undefined : press}
                     style={{ gridColumn: slot % columns + 1, gridRow: Math.floor(slot / columns) + 1 }}
                     draggable={layoutMode && !selectingTables} onDragStart={(event) => { event.stopPropagation(); setDraggedTableId(table.id); setSelectedId(table.id); }} onDragEnd={() => { setDraggedTableId(null); setDropTarget(null); }}
                     onPointerDown={(event) => startTableTouch(event, table)} onPointerMove={moveTableTouch} onPointerUp={(event) => finishTableTouch(event)} onPointerCancel={(event) => finishTableTouch(event, true)}
@@ -1504,7 +1642,15 @@ export default function TablePOS({
                   onChangeQuantity={changeQuantity}
                   onMoveTable={openTableMove}
                   onToggleBill={toggleBillRequest}
-                  onClearTable={() => { update((table) => ({ ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined })); setSelectedLineId(null); setConfirmClearTable(false); }}
+                  onClearTable={() => {
+                    if (selected.area === "counter") {
+                      setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
+                      setAccountOpen(false);
+                      setOperator(null);
+                    } else update((table) => ({ ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined }));
+                    setSelectedLineId(null);
+                    setConfirmClearTable(false);
+                  }}
                   discountOpen={discountOpen}
                   onDiscountOpenChange={setDiscountOpen}
                   confirmClear={confirmClearTable}

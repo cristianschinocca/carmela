@@ -1,8 +1,10 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
+import { enableDemoSession } from './demo-session.mjs';
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+await enableDemoSession(page);
 try {
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5198');
   await page.evaluate(() => localStorage.clear());

@@ -33,6 +33,7 @@ import {
   MessageSquareText,
   Moon,
   Sun,
+  LogOut,
 } from "lucide-react";
 import {
   defaultCategories,
@@ -58,6 +59,8 @@ import {
   type CashExpense,
 } from "./components/CashRegister";
 import { PublicMenu } from "./components/PublicMenu";
+import { LoginPage } from "./components/LoginPage";
+import { loadTeamMembers, type TeamMember } from "./stores/team";
 import { useDashboardTheme } from "./hooks/useDashboardTheme";
 import { business } from "./config/business";
 import {
@@ -84,6 +87,15 @@ const nav = [
 const PRODUCT_STORAGE = "carmela.products.v1";
 const CATEGORY_STORAGE = "carmela.categories.v1";
 const CASH_EXPENSE_STORAGE = "carmela.cash.expenses.v1";
+const DEMO_SESSION_KEY = "carmela.demo.member.v2";
+const loadDemoMember = (): TeamMember | null => {
+  try {
+    const id = Number(sessionStorage.getItem(DEMO_SESSION_KEY));
+    return loadTeamMembers().find((member) => member.id === id && member.active) ?? null;
+  } catch {
+    return null;
+  }
+};
 const loadProducts = () => {
   try {
     const saved = localStorage.getItem(PRODUCT_STORAGE);
@@ -109,6 +121,8 @@ const loadCashExpenses = () => {
   }
 };
 export function App() {
+  const [sessionMember, setSessionMember] = useState<TeamMember | null>(loadDemoMember);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>(loadProducts);
   const [stock, setStock] = useState<Stock>(loadStock);
   const [categoryList, setCategoryList] = useState<string[]>(loadCategories);
@@ -120,7 +134,7 @@ export function App() {
   const [publicThemeActive, setPublicThemeActive] = useState(
     location.hash === "#menu",
   );
-  const { darkMode, setDarkMode } = useDashboardTheme(publicThemeActive);
+  const { darkMode, setDarkMode } = useDashboardTheme(publicThemeActive || !sessionMember);
   const [side, setSide] = useState(false);
   const [notice, setNotice] = useState("");
   const [period, setPeriod] = useState("Hoy");
@@ -157,6 +171,21 @@ export function App() {
   const go = (p: string) => {
     setPage(p);
     setSide(false);
+    setProfileOpen(false);
+  };
+  const login = (member: TeamMember) => {
+    sessionStorage.setItem(DEMO_SESSION_KEY, String(member.id));
+    setSessionMember(member);
+    setPage("Resumen");
+  };
+  const logout = () => {
+    sessionStorage.removeItem(DEMO_SESSION_KEY);
+    setSessionMember(null);
+    setProfileOpen(false);
+    setSide(false);
+    setCashOpen(false);
+    setSalesOpen(false);
+    setPage("Resumen");
   };
   const openMenu = () => {
     setNotice("");
@@ -270,6 +299,8 @@ export function App() {
             }}
             onSelect={setSelected}
           />
+        ) : !sessionMember ? (
+          <LoginPage onLogin={login} onOpenMenu={openMenu} />
         ) : (
           <motion.div
             key="dashboard"
@@ -283,15 +314,23 @@ export function App() {
             <motion.aside className={side ? "sidebar visible" : "sidebar"}>
               <button
                 className="workspace profile-workspace"
-                onClick={() => go("Configuración")}
+                aria-expanded={profileOpen}
+                aria-controls="profile-menu"
+                onClick={() => setProfileOpen((open) => !open)}
               >
-                <div className="avatar">CL</div>
+                <div className="avatar">{sessionMember.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
                 <span>
-                  <strong>Camila López</strong>
-                  <small>Administradora</small>
+                  <strong>{sessionMember.name}</strong>
+                  <small>{sessionMember.role}</small>
                 </span>
                 <ChevronDown size={15} />
               </button>
+              {profileOpen && (
+                <div id="profile-menu" className="mx-1 -mt-5 mb-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg">
+                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs hover:bg-[var(--brand-soft)]" onClick={() => go("Configuración")}><Settings size={15} /> Configuración</button>
+                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs text-[var(--brand)] hover:bg-[var(--brand-soft)]" onClick={logout}><LogOut size={15} /> Cerrar sesión</button>
+                </div>
+              )}
               <span className="nav-label">TU ESPACIO DE TRABAJO</span>
               <nav>
                 {nav.map(([label, Icon], i) => (
@@ -808,8 +847,8 @@ export function App() {
           </motion.div>
         )}
       </AnimatePresence>
-      <PaidTablesDialog open={salesOpen && !publicView} onClose={() => setSalesOpen(false)} />
-      <CashRegister mode={cashMode} open={cashOpen && !publicView} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
+      <PaidTablesDialog open={salesOpen && !publicView && Boolean(sessionMember)} onClose={() => setSalesOpen(false)} />
+      <CashRegister mode={cashMode} open={cashOpen && !publicView && Boolean(sessionMember)} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
       <AnimatePresence>
         {notice && (
           <motion.div

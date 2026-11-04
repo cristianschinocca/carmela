@@ -1,8 +1,10 @@
 import { chromium } from "@playwright/test";
+import { enableDemoSession } from './demo-session.mjs';
 
 const base = process.env.BASE_URL || "http://127.0.0.1:5198";
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+await enableDemoSession(page);
 
 try {
   await page.goto(base);

@@ -63,6 +63,14 @@ export const materializeTableSlots = (items: Table[]): Table[] => {
     return { ...table, slot };
   });
 };
+export const compactCounterSlots = (items: Table[]): Table[] => {
+  const positions = new Map(
+    items.filter((table) => table.area === "counter")
+      .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
+      .map((table, index) => [table.id, index]),
+  );
+  return items.map((table) => positions.has(table.id) ? { ...table, slot: positions.get(table.id) } : table);
+};
 const DEFAULT_SECTORS: Sector[] = [
   { id: "salon", label: "Salón", description: "Mesas interiores", limit: SECTOR_TABLE_LIMIT, columns: 9, start: 1, minHeight: 186 },
   {
@@ -187,10 +195,81 @@ export const resizeSectorRect = (base: SectorRect, desired: SectorRect, obstacle
   const horizontal = furthest(base, { ...base, x: desired.x, width: desired.width });
   return furthest(horizontal, { ...horizontal, height: desired.height });
 };
+export const resizeSectorAndPush = (
+  sectors: Sector[], id: string, desired: SectorRect, boardWidth: number, minimumHeight = FREEFORM_MIN_HEIGHT,
+): Sector[] => {
+  const target = sectors.find((sector) => sector.id === id);
+  if (!target?.layout) return sectors;
+
+  const base = sectorRect(target.layout, boardWidth);
+  // Keep the horizontal collision limit. Vertical growth moves the sectors below instead.
+  const horizontal = resizeSectorRect(base, { ...desired, height: base.height }, sectorObstacles(sectors, id, boardWidth), boardWidth);
+  const rects = new Map(sectors.filter((sector) => sector.layout).map((sector) => [sector.id, sectorRect(sector.layout!, boardWidth)]));
+  const resized = { ...horizontal, height: Math.min(MAX_SECTOR_HEIGHT, Math.max(minimumHeight, desired.height)) };
+  rects.set(id, resized);
+  const overlapsX = (a: SectorRect, b: SectorRect) => a.x < b.x + b.width - 0.5 && b.x < a.x + a.width - 0.5;
+
+  // Keep sectors that were directly below attached when the upper sector shrinks.
+  const heightChange = resized.height - base.height;
+  if (heightChange < 0) {
+    const attached = new Set([id]);
+    const queue = [id];
+    while (queue.length) {
+      const sourceId = queue.shift()!;
+      const source = sectors.find((sector) => sector.id === sourceId)!;
+      const sourceRect = sectorRect(source.layout!, boardWidth);
+      for (const sector of sectors) {
+        if (attached.has(sector.id) || !sector.layout) continue;
+        const other = sectorRect(sector.layout, boardWidth);
+        if (!overlapsX(sourceRect, other) || Math.abs(other.y - sourceRect.y - sourceRect.height - SECTOR_GAP) > 1) continue;
+        attached.add(sector.id);
+        queue.push(sector.id);
+      }
+    }
+    const followers = sectors.filter((sector) => sector.id !== id && attached.has(sector.id) && sector.layout)
+      .sort((a, b) => a.layout!.y - b.layout!.y);
+    for (const sector of followers) {
+      const original = sectorRect(sector.layout!, boardWidth);
+      let y = Math.max(0, original.y + heightChange);
+      for (const blocker of sectors) {
+        if (blocker.id === sector.id || !blocker.layout || blocker.layout.y >= original.y) continue;
+        const rect = rects.get(blocker.id)!;
+        const nearbyX = original.x < rect.x + rect.width + SECTOR_GAP - 0.5 &&
+          rect.x < original.x + original.width + SECTOR_GAP - 0.5;
+        if (nearbyX) y = Math.max(y, rect.y + rect.height + SECTOR_GAP);
+      }
+      rects.set(sector.id, { ...original, y });
+    }
+  }
+
+  const pending = [id];
+  while (pending.length) {
+    const sourceId = pending.shift()!;
+    const source = rects.get(sourceId)!;
+    for (const sector of sectors) {
+      if (sector.id === id || sector.id === sourceId || !sector.layout) continue;
+      const other = rects.get(sector.id)!;
+      if (!overlapsX(source, other) || other.y < source.y || other.y >= source.y + source.height + SECTOR_GAP - 0.5) continue;
+      const nextY = source.y + source.height + SECTOR_GAP;
+      if (nextY <= other.y) continue;
+      rects.set(sector.id, { ...other, y: nextY });
+      pending.push(sector.id);
+    }
+  }
+
+  return sectors.map((sector) => {
+    const rect = rects.get(sector.id);
+    if (!rect || !sector.layout) return sector;
+    return { ...sector, autoFit: false, layout: {
+      ...sector.layout, x: rect.x / boardWidth, y: Math.round(rect.y),
+      width: rect.width / boardWidth, height: rect.height,
+    } };
+  });
+};
 const normalizeCounterNumbers = (tables: Table[]) => {
   const used = new Set(
     tables
-      .filter((table) => table.area === "counter" && table.counterTurnNumber)
+      .filter((table) => table.area === "counter" && table.items.length > 0 && table.counterTurnNumber)
       .map((table) => table.counterTurnNumber!),
   );
   const normalized = tables.map((table) => {
@@ -339,7 +418,7 @@ export const loadInitialFloor = (): Table[] => {
     localStorage.setItem(migrationKey, "1");
   }
   const seedKey = "carmela.pos.seed.128.v1";
-  if (localStorage.getItem(seedKey)) return existing;
+  if (localStorage.getItem(seedKey)) return compactCounterSlots(existing);
   const sectors = loadSectors();
   const next = [...existing];
   for (const area of ["salon", "patio"] as const) {
@@ -366,6 +445,6 @@ export const loadInitialFloor = (): Table[] => {
   }
   localStorage.setItem(KEY, JSON.stringify(next));
   localStorage.setItem(seedKey, "1");
-  return next;
+  return compactCounterSlots(next);
 };
 

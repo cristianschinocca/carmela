@@ -1,9 +1,11 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
+import { enableDemoSession } from './demo-session.mjs';
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:5198';
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1920, height: 900 }, reducedMotion: 'reduce' });
+await enableDemoSession(page);
 const floor = () => page.evaluate(() => JSON.parse(localStorage.getItem('carmela.pos.floor.v2')));
 
 async function openCounter() {
@@ -34,7 +36,7 @@ try {
       id: `legacy-counter-${index}`, name: `Mesa ${60 + index}`, area: 'counter', guests: 2,
       items: index < 5 ? [{ id: `legacy-line-${index}`, productId: 1, quantity: 1, note: 'Conservar' }] : [],
       discount: 0, billRequested: false, operatorId: index < 5 ? 1 : undefined,
-      counterTurnNumber: index < 5 ? index + 1 : undefined, slot: index, x: 93, y: 58 + index * 56,
+      counterTurnNumber: index < 5 ? index + 1 : undefined, slot: index + 2, x: 93, y: 58 + index * 56,
     });
     localStorage.setItem(key, JSON.stringify(tables));
     localStorage.setItem('carmela.pos.counter.sequence.v1', '5');
@@ -43,6 +45,7 @@ try {
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
   let counter = page.locator('[data-sector-id="counter"]');
   await counter.getByText('5/50 abiertas').waitFor();
+  assert.deepEqual((await floor()).filter((table) => table.area === 'counter').map((table) => table.slot), [0, 1, 2, 3, 4]);
   await page.getByRole('button', { name: 'Editar plano', exact: true }).click();
   assert.equal(await counter.locator('.floor-table').count(), 5);
   await page.getByRole('button', { name: 'Terminar edición', exact: true }).click();
@@ -91,7 +94,18 @@ try {
   assert.equal(await counter.locator('.floor-enter-hint').count(), 0);
   await page.keyboard.press('Enter');
   assert.equal(await employeePicker.count(), 0);
-  const nextCounterNumber = await page.evaluate(() => Number(localStorage.getItem('carmela.pos.counter.sequence.v1')) + 1);
+  const sequenceBeforeEmpty = await page.evaluate(() => Number(localStorage.getItem('carmela.pos.counter.sequence.v2')) || 0);
+  await counter.hover();
+  await counter.locator('.floor-enter-hint').waitFor();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Trabajar como Camila López' }).click();
+  await page.locator('.covers-modal').getByRole('button', { name: 'Abrir mesa', exact: true }).click();
+  const emptyCounterAccount = page.getByRole('dialog', { name: /Cuenta de Mesa/ });
+  await emptyCounterAccount.waitFor();
+  await page.keyboard.press('Escape');
+  await emptyCounterAccount.waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => Number(localStorage.getItem('carmela.pos.counter.sequence.v2')) || 0), sequenceBeforeEmpty);
+  const nextCounterNumber = sequenceBeforeEmpty + 1;
   await openCounter();
   await counter.getByText('6/50 abiertas').waitFor();
   let counters = (await floor()).filter((table) => table.area === 'counter');
@@ -144,6 +158,7 @@ try {
   await counter.getByText('49/50 abiertas').waitFor();
   counters = (await floor()).filter((table) => table.area === 'counter');
   assert.equal(counters.length, 49);
+  assert.deepEqual(counters.map((table) => table.slot).sort((a, b) => a - b), Array.from({ length: 49 }, (_, index) => index));
   await page.reload();
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
   await page.locator('[data-sector-id="counter"]').getByText('49/50 abiertas').waitFor();
