@@ -61,14 +61,14 @@ const sameLinePrice = (a: Line, b: Line) => a.unitPrice === b.unitPrice && (a.un
 type SectorResizeMetrics = { widthOffset: number; chromeHeight: number; rowHeight: number; rowGap: number; lastSlot: number };
 type SectorDragGesture = {
   id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout;
-  latest: SectorLayout; boardWidth: number; moved: boolean; autoScrollOffset: number;
+  latest: SectorLayout; boardWidth: number; moved: boolean;
   obstacles: SectorRect[]; element: HTMLElement; pending: { x: number; y: number } | null; frame: number | null;
 };
 type SectorResizeGesture = {
   id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout;
   sectors: Sector[]; latest: Sector[]; boardWidth: number; edge: -1 | 1; moved: boolean;
   metrics: SectorResizeMetrics; elements: Map<string, HTMLElement>;
-  pending: { x: number; y: number } | null; frame: number | null; autoScrollOffset: number;
+  pending: { x: number; y: number } | null; frame: number | null;
 };
 const floorEditGroupClassName = "flex min-w-0 flex-wrap items-center gap-[7px] max-[760px]:max-w-full [&_.button]:!min-h-9 [&_.button]:!px-[11px] [&_.button]:!py-2";
 const makeCounterTable = (tables: Table[], id = `counter-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`): Table => {
@@ -114,7 +114,7 @@ export default function TablePOS({
   const [boardHeight, setBoardHeight] = useState(400);
   const sectorDragRef = useRef<SectorDragGesture | null>(null);
   const resizeRef = useRef<SectorResizeGesture | null>(null);
-  const scrollGestureRef = useRef<{ pointerId: number; mode: "drag" | "resize"; clientX: number; clientY: number; frame: number; lastPointerMoveAt: number; verticalDirection: number } | null>(null);
+  const scrollGestureRef = useRef<{ pointerId: number; mode: "drag" | "resize"; clientX: number; clientY: number; frame: number; verticalDirection: number } | null>(null);
   const suppressSectorClick = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -954,7 +954,7 @@ export default function TablePOS({
     const { x: clientX, y: clientY } = drag.pending;
     drag.pending = null;
     const dx = clientX - drag.x;
-    const dy = clientY + window.scrollY - drag.pageY - drag.autoScrollOffset;
+    const dy = clientY + window.scrollY - drag.pageY;
     if (Math.abs(dx) + Math.abs(dy) < 3 && !drag.moved) return;
     drag.moved = true;
     const previous = sectorRect(drag.latest, drag.boardWidth);
@@ -1004,7 +1004,7 @@ export default function TablePOS({
     resize.frame = null;
     const { x: clientX, y: clientY } = resize.pending;
     resize.pending = null;
-    const pointerDeltaY = clientY + window.scrollY - resize.pageY - resize.autoScrollOffset;
+    const pointerDeltaY = clientY + window.scrollY - resize.pageY;
     if (Math.abs(clientX - resize.x) + Math.abs(pointerDeltaY) < 3 && !resize.moved) return;
     resize.moved = true;
     const deltaX = (clientX - resize.x) / resize.boardWidth;
@@ -1061,21 +1061,21 @@ export default function TablePOS({
     const edge = 84;
     const bottom = window.innerHeight - gesture.clientY;
     const direction = gesture.clientY < edge ? -1 : bottom < edge ? 1 : 0;
-    if (direction && direction === gesture.verticalDirection && performance.now() - gesture.lastPointerMoveAt < 100) {
+    if (direction && direction === gesture.verticalDirection) {
       const distance = direction < 0 ? gesture.clientY : bottom;
       const speed = direction * Math.max(4, Math.min(22, (edge - distance) * .28));
       const previousY = window.scrollY;
       window.scrollBy(0, speed);
       if (window.scrollY !== previousY) {
-        if (gesture.mode === "drag" && sectorDragRef.current) sectorDragRef.current.autoScrollOffset += window.scrollY - previousY;
-        if (gesture.mode === "resize" && resizeRef.current) resizeRef.current.autoScrollOffset += window.scrollY - previousY;
+        if (gesture.mode === "drag") updateSectorDrag(gesture.clientX, gesture.clientY);
+        else updateSectorResize(gesture.clientX, gesture.clientY);
       }
     }
     gesture.frame = requestAnimationFrame(tickGestureScroll);
   };
   const startGestureScroll = (pointerId: number, mode: "drag" | "resize", clientX: number, clientY: number) => {
     stopGestureScroll();
-    scrollGestureRef.current = { pointerId, mode, clientX, clientY, frame: requestAnimationFrame(tickGestureScroll), lastPointerMoveAt: 0, verticalDirection: 0 };
+    scrollGestureRef.current = { pointerId, mode, clientX, clientY, frame: requestAnimationFrame(tickGestureScroll), verticalDirection: 0 };
   };
   const trackGesturePointer = (pointerId: number, clientX: number, clientY: number) => {
     const gesture = scrollGestureRef.current;
@@ -1083,7 +1083,6 @@ export default function TablePOS({
     const deltaY = clientY - gesture.clientY;
     if (Math.abs(deltaY) > 1) {
       gesture.verticalDirection = Math.sign(deltaY);
-      gesture.lastPointerMoveAt = performance.now();
     }
     gesture.clientX = clientX;
     gesture.clientY = clientY;
@@ -1118,7 +1117,6 @@ export default function TablePOS({
       latest: sector.layout,
       boardWidth: board.clientWidth,
       moved: false,
-      autoScrollOffset: 0,
       obstacles: sectorObstacles(sectorsRef.current, sector.id, board.clientWidth),
       element,
       pending: null,
@@ -1150,10 +1148,15 @@ export default function TablePOS({
     setDraggingSectorId(null);
     settleSectorGesture();
     if (drag.moved) {
+      const nextHeight = Math.max(300, ...sectorsRef.current.map((sector) => {
+        const layout = sector.id === drag.id ? drag.latest : sector.layout;
+        return (layout?.y || 0) + (layout?.height || 0) + 16;
+      }));
       setSectors((current) => current.map((sector) => sector.id === drag.id
         ? { ...sector, layout: drag.latest, autoFit: false }
         : sector.autoFit ? { ...sector, autoFit: false } : sector));
-      setBoardHeight((height) => Math.max(height, drag.latest.y + drag.latest.height + 16));
+      setBoardHeight(nextHeight);
+      boardRef.current?.style.setProperty("--floor-board-height", `${nextHeight}px`);
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -1188,7 +1191,6 @@ export default function TablePOS({
       pointerId: event.pointerId,
       edge,
       moved: false,
-      autoScrollOffset: 0,
       metrics,
       elements: new Map(Array.from(board.querySelectorAll<HTMLElement>(".floor-sector"))
         .map((element) => [element.dataset.sectorId!, element])),
@@ -1222,9 +1224,11 @@ export default function TablePOS({
     settleSectorGesture();
     if (resize.moved) {
       const targetWidth = (resize.latest.find((sector) => sector.id === resize.id)?.layout?.width || resize.layout.width) * resize.boardWidth;
+      const nextHeight = Math.max(300, ...resize.latest.map((sector) => (sector.layout?.y || 0) + (sector.layout?.height || 0) + 16));
       setSectors(resize.latest);
       setTableColumns((current) => ({ ...current, [resize.id]: sectorGridColumns(resize.metrics, targetWidth) }));
-      setBoardHeight(Math.max(300, ...resize.latest.map((sector) => (sector.layout?.y || 0) + (sector.layout?.height || 0) + 16)));
+      setBoardHeight(nextHeight);
+      boardRef.current?.style.setProperty("--floor-board-height", `${nextHeight}px`);
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };

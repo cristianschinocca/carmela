@@ -140,6 +140,24 @@ try {
   assert.ok(afterScrolledDrag.salon.height < grownAtScroll.salon.height, 'Debe poder volver a achicarse con la página desplazada');
   assert.ok(afterScrolledDrag.patio.y >= afterScrolledDrag.salon.y + afterScrolledDrag.salon.height + 14 - 1);
 
+  await scrolledHandle.scrollIntoViewIfNeeded();
+  const edgeBox = await scrolledHandle.boundingBox();
+  assert.ok(edgeBox);
+  const edgeX = edgeBox.x + edgeBox.width / 2;
+  const edgeY = edgeBox.y + edgeBox.height / 2;
+  await page.mouse.move(edgeX, edgeY);
+  await page.mouse.down();
+  await page.mouse.move(edgeX, 790, { steps: 8 });
+  const edgeStart = { layout: await positions(), scroll: await page.evaluate(() => window.scrollY) };
+  await page.waitForTimeout(280);
+  const edgeEnd = { layout: await positions(), scroll: await page.evaluate(() => window.scrollY) };
+  const edgePreviewHeight = await page.locator('[data-sector-id="salon"]').evaluate((element) => Number.parseFloat(element.style.getPropertyValue('--free-height')));
+  assert.ok(edgeEnd.scroll > edgeStart.scroll, 'El borde inferior debe desplazar la página durante el arrastre');
+  assert.ok(edgePreviewHeight > edgeStart.layout.salon.height + 20, 'El sector debe crecer mientras la página se desplaza');
+  await page.mouse.up();
+  assert.ok((await positions()).salon.height >= edgePreviewHeight - 1);
+  const afterEdgeResize = await positions();
+
   const patioTitle = page.locator('[data-sector-id="patio"] .floor-sector-title');
   await patioTitle.scrollIntoViewIfNeeded();
   const patioBox = await patioTitle.boundingBox();
@@ -149,11 +167,11 @@ try {
   await page.mouse.move(patioX, patioY);
   await page.mouse.down();
   await page.mouse.move(patioX, patioY + 55, { steps: 7 });
-  await page.waitForFunction((y) => Number.parseFloat(document.querySelector('[data-sector-id="patio"]').style.getPropertyValue('--free-y')) > y + 30, afterScrolledDrag.patio.y);
-  assert.equal((await positions()).patio.y, afterScrolledDrag.patio.y, 'Mover un sector no debe guardar en cada movimiento');
+  await page.waitForFunction((y) => Number.parseFloat(document.querySelector('[data-sector-id="patio"]').style.getPropertyValue('--free-y')) > y + 30, afterEdgeResize.patio.y);
+  assert.equal((await positions()).patio.y, afterEdgeResize.patio.y, 'Mover un sector no debe guardar en cada movimiento');
   await page.mouse.up();
   const movedPatio = await positions();
-  assert.ok(movedPatio.patio.y > afterScrolledDrag.patio.y + 30, 'El sector debe seguir al puntero');
+  assert.ok(movedPatio.patio.y > afterEdgeResize.patio.y + 30, 'El sector debe seguir al puntero');
   assert.ok(movedPatio.patio.y >= movedPatio.salon.y + movedPatio.salon.height + 14 - 1);
   await patioTitle.scrollIntoViewIfNeeded();
   const returnPatioBox = await patioTitle.boundingBox();
@@ -165,6 +183,12 @@ try {
   await page.mouse.move(returnPatioX, returnPatioY - 30, { steps: 5 });
   await page.mouse.up();
   assert.ok((await positions()).patio.y < movedPatio.patio.y, 'Debe poder volver a mover el sector hacia arriba');
+  await page.getByRole('button', { name: 'Terminar edición', exact: true }).click();
+  const boardSpace = await page.locator('.floor-board').evaluate((board) => {
+    const bottom = Math.max(...[...board.querySelectorAll('.floor-sector')].map((sector) => sector.offsetTop + sector.offsetHeight));
+    return board.offsetHeight - bottom;
+  });
+  assert.ok(boardSpace < 40, 'Al terminar la edición no debe quedar altura temporal debajo de los sectores');
   assert.deepEqual(pageErrors, [], 'El redimensionado no debe producir errores en el navegador');
   console.log('PASS: arrastre y redimensionado fluidos, empuje, anchura, visibilidad, persistencia y sin errores de navegador.');
 } finally {
