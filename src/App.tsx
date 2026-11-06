@@ -46,7 +46,7 @@ import { Metric } from "./components/Operations";
 import TablePOS from "./components/TablePOS";
 import { PaidTablesDialog } from "./components/PaidTablesDialog";
 import { ProductManager } from "./components/ProductManager";
-import { StockManager } from "./components/StockManager";
+import { StockWorkspace } from "./stock/StockWorkspace";
 import { StockAlerts } from "./components/StockAlerts";
 import { loadStock, productsWithStock, type Stock } from "./stores/inventory";
 import { TeamManager } from "./components/TeamManager";
@@ -702,7 +702,7 @@ export function App() {
                         onDeleteCategory={deleteCategory}
                       />
                     ) : page === "Stock" ? (
-                      <StockManager products={products} stock={stock} onStockChange={setStock} onToast={toast} />
+                      <StockWorkspace products={products} stock={stock} onStockChange={setStock} onToast={toast} />
                     ) : page === "Menú digital" ? (
                       <div className="menu-admin">
                         <section className="panel">
