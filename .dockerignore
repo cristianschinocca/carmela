@@ -1,0 +1,10 @@
+.git
+node_modules
+.pnpm-store
+dist
+artifacts
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store

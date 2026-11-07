@@ -1,0 +1,36 @@
+/* Team and time clock */
+.attendance-panel{padding:22px;position:sticky;top:20px}
+.clock-history{display:grid;margin-bottom:20px}
+.clock-history>div{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid #eef0e9}
+.clock-history>div:last-child{border-bottom:0}
+.clock-kind{display:grid;place-items:center;width:31px;height:31px;border-radius:9px}
+.clock-kind.in{background:#edf4e8;color:#668459}
+.clock-kind.out{background:#f8e9ef;color:#a1446b}
+.clock-history strong{display:block;font-size:10px;font-weight:600}
+.clock-history small{display:block;font-size:8px;color:#969d92;margin-top:4px}
+.empty.compact{padding:32px 8px}
+.field>small{font-size:8px;color:#9aa094;margin-top:-3px}
+.form-error{font-size:10px;color:#a54452;background:#fff1f1;border-radius:8px;padding:9px 11px;margin:-5px 0 14px}
+.clock-modal{max-width:390px;padding:28px;background:rgba(255,255,255,.97)}
+.clock-heading{text-align:center;padding-top:5px}
+.clock-heading .round-icon{margin:0 auto 13px;width:44px;height:44px}
+.clock-heading h2{font-size:24px;margin:7px 0 5px}
+.pin-dots{display:flex;justify-content:center;gap:13px;margin:26px 0 18px}
+.pin-dots i{width:12px;height:12px;border-radius:50%;background:#ece7e5;border:1px solid #ddd5d3;transition:background .16s,transform .16s}
+.pin-dots i.filled{background:var(--brand);border-color:var(--brand);transform:scale(1.08)}
+.pin-error{text-align:center;font-size:10px;color:#a54452;margin:-5px 0 12px}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pin-pad button{height:48px;border:1px solid #e9e2df;border-radius:11px;background:#fff;font-size:16px;font-weight:600;text-align:center;display:grid;place-items:center}
+.pin-pad button:hover:not(:disabled){background:#fff8fa}
+.pin-pad .pin-clear{font-size:9px;color:#8d7b80}
+.pin-pad .pin-submit{background:var(--brand);color:#fff;border-color:var(--brand)}
+.clock-demo{text-align:center;font-size:8px;margin-top:14px;color:#a0a69d}
+.clock-result{text-align:center;padding:14px 0 2px}
+.success-ring{width:60px;height:60px;border-radius:50%;background:#edf4e8;color:#668459;display:grid;place-items:center;margin:0 auto 17px}
+.clock-result h2{font-size:23px;margin:8px 0}
+.clock-result p{margin-bottom:23px}
+
+@media(max-width:1100px){.attendance-panel{position:static}}
+@media(max-width:760px){.clock-modal{padding:24px 20px}.attendance-panel{padding:18px}}
+
+

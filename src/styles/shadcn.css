@@ -1,0 +1,17 @@
+/* Map shadcn's semantic colors to Carmela's existing theme. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text, #292327);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text, #292327);
+  --color-primary: var(--brand);
+  --color-primary-foreground: #fff;
+  --color-secondary: var(--brand-soft);
+  --color-secondary-foreground: var(--text, #292327);
+  --color-accent: var(--brand-soft);
+  --color-accent-foreground: var(--text, #292327);
+  --color-muted-foreground: var(--muted);
+  --color-input: var(--border);
+  --color-ring: var(--brand);
+  --color-destructive: #b83a58;
+}

@@ -25,26 +25,17 @@ import {
 import { money } from "../data";
 import { modalVariants, overlayVariants } from "../motion";
 import { resetCounterTableSequence } from "../stores/counterSequence";
+import {
+  CASH_BASE_EXPECTED,
+  CASH_SALES,
+  OTHER_PAYMENTS,
+  type CashExpense,
+  type CashMovementKind,
+} from "../stores/cash";
 
-export const CASH_BASE_EXPECTED = 164500;
-export const CASH_SALES = 114500;
-export const OTHER_PAYMENTS = 170000;
 const DENOMINATIONS = [10, 20, 50, 100, 200, 1000, 2000, 10000, 20000];
 
 type ClosingStep = "count" | "confirm" | null;
-type CashMovementKind = "proveedor" | "empleado" | "gasto" | "ajuste";
-export type CashExpense = {
-  kind?: CashMovementKind;
-  direction?: "in" | "out";
-  id: number;
-  time: string;
-  supplier: string;
-  concept: string;
-  category: string;
-  amount: number;
-  payment: "Efectivo" | "Transferencia" | "Tarjeta";
-  receipt: string;
-};
 
 const emptyExpense = {
   kind: "proveedor" as CashMovementKind,

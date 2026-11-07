@@ -58,6 +58,13 @@ const defaultPay: TeamPay = {
   basis: "hour", rate: 0,
   schedule: [],
 };
+const teamColumns = "grid grid-cols-[44px_minmax(135px,1.5fr)_minmax(130px,1.15fr)_minmax(105px,.9fr)_minmax(130px,1fr)_minmax(95px,.85fr)_76px] items-center gap-3";
+const metricClass = "flex min-h-[106px] items-center gap-[15px] rounded-2xl border border-[var(--border)] bg-white px-[23px] py-5 max-[760px]:min-h-[86px] max-[760px]:p-[15px]";
+const modalClass = "product-modal member-modal !flex !max-h-[calc(100dvh-32px)] !max-w-[570px] !flex-col !overflow-hidden !bg-[rgba(255,255,255,.97)] in-data-[theme=dark]:!bg-[rgba(27,25,26,.96)]";
+const modalFormClass = "product-form !flex min-h-0 flex-1 flex-col !p-0";
+const modalBodyClass = "member-form-body min-h-0 flex-1 overflow-y-auto px-[30px] py-[23px] [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] max-[760px]:p-5";
+const modalActionsClass = "form-actions !min-h-[68px] shrink-0 !border-t !border-[var(--border)] !bg-[var(--surface)] !px-[30px] !pt-[13px] !pb-[18px] max-[760px]:!px-5 max-[760px]:!pt-3 max-[760px]:!pb-4 max-[420px]:!gap-1.5 max-[420px]:[&_.button]:!p-[9px] max-[420px]:[&_.button]:!text-[10px] max-[420px]:[&_.danger-text]:!mr-auto max-[420px]:[&_.danger-text]:!gap-[3px] max-[420px]:[&_.danger-text]:!px-0 max-[420px]:[&_.danger-text]:!py-[5px] max-[420px]:[&_.danger-text]:!text-[9px]";
+const scheduleColumns = "grid grid-cols-[minmax(72px,1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] items-center gap-[9px]";
 export function TeamManager() {
   const [team, setTeam] = useState<TeamMember[]>(() =>
     loadTeamMembers(),
@@ -97,40 +104,40 @@ export function TeamManager() {
     setEditing(null);
   };
   return (
-    <div className="team-page">
-      <div className="team-metrics">
-        <section>
-          <span className="round-icon">
+    <div className="team-page grid gap-4">
+      <div className="team-metrics grid grid-cols-3 gap-3.5 max-[760px]:grid-cols-2">
+        <section className={metricClass}>
+          <span className="round-icon !size-[38px]">
             <Users size={19} />
           </span>
           <div>
-            <small>Personas activas</small>
-            <strong>{team.filter((item) => item.active).length}</strong>
+            <small className="mb-1 block text-[10px] text-[var(--muted)]">Personas activas</small>
+            <strong className="block text-[24px] font-[650] tracking-[-.6px] max-[760px]:text-xl">{team.filter((item) => item.active).length}</strong>
           </div>
         </section>
-        <section>
-          <span className="round-icon">
+        <section className={metricClass}>
+          <span className="round-icon !size-[38px]">
             <Clock3 size={19} />
           </span>
           <div>
-            <small>Trabajando ahora</small>
-            <strong>{onShift}</strong>
+            <small className="mb-1 block text-[10px] text-[var(--muted)]">Trabajando ahora</small>
+            <strong className="block text-[24px] font-[650] tracking-[-.6px] max-[760px]:text-xl">{onShift}</strong>
           </div>
         </section>
-        <section>
-          <span className="round-icon">
+        <section className={`${metricClass} max-[760px]:col-span-full`}>
+          <span className="round-icon !size-[38px]">
             <Wallet size={19} />
           </span>
           <div>
-            <small>Sueldos estimados este mes</small>
-            <strong>{configured.length ? money(monthlyTotal) : "Sin configurar"}</strong>
+            <small className="mb-1 block text-[10px] text-[var(--muted)]">Sueldos estimados este mes</small>
+            <strong className="block text-[21px] font-[650] tracking-[-.6px] max-[760px]:text-[19px]">{configured.length ? money(monthlyTotal) : "Sin configurar"}</strong>
           </div>
         </section>
       </div>
-      <div className="team-layout">
-        <section className="panel team-manager">
-          <div className="manager-toolbar">
-            <label className="search">
+      <div>
+        <section className="panel team-manager !overflow-hidden !rounded-[18px] !p-0">
+          <div className="manager-toolbar !px-6 !py-[21px] max-[760px]:!flex-wrap max-[760px]:!p-4">
+            <label className="search max-[760px]:!w-full">
               <Search size={18} />
               <input
                 aria-label="Buscar equipo"
@@ -139,7 +146,7 @@ export function TeamManager() {
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
-            <div className="manager-actions">
+            <div className="manager-actions max-[760px]:!w-full max-[760px]:[&_.button]:!w-full">
               <button
                 className="button primary"
                 onClick={() => {
@@ -158,15 +165,15 @@ export function TeamManager() {
               </button>
             </div>
           </div>
-          <div className="manager-summary">
+          <div className="manager-summary !bg-[var(--surface)] !px-6 !py-[11px] !text-[var(--muted)] max-[760px]:!px-4 max-[760px]:!py-2.5 max-[760px]:[&>span:last-child]:hidden">
             <span>{visible.length} {visible.length === 1 ? "persona" : "personas"}</span>
             <span>Estimación según días y horario configurados. No incluye ausencias ni feriados.</span>
           </div>
-          <div className="team-list-head" aria-hidden="true">
-            <span>Persona</span><span>Jornada</span><span>Tarifa</span><span>Estimado del mes</span><span>Estado</span><span />
+          <div className={`team-list-head ${teamColumns} border-b border-[var(--border)] px-6 pt-[13px] pb-[9px] text-[9px] text-[var(--muted)] max-[1150px]:hidden`} aria-hidden="true">
+            <span className="col-span-2">Persona</span><span>Jornada</span><span>Tarifa</span><span>Estimado del mes</span><span>Estado</span><span />
           </div>
           <motion.div
-            className="team-list"
+            className="team-list px-6 max-[760px]:px-4"
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
@@ -175,23 +182,23 @@ export function TeamManager() {
               <motion.article
                 layout
                 variants={fadeUp}
-                className="team-row"
+                className={`team-row ${teamColumns} border-b border-[var(--border)] py-3.5 last:border-b-0 max-[1150px]:grid-cols-[42px_minmax(0,1fr)_auto] max-[1150px]:gap-x-3 max-[1150px]:gap-y-1.5`}
                 key={member.id}
               >
-                <span className="team-avatar">{initials(member.name)}</span>
-                <div className="team-copy">
-                  <strong>{member.name}</strong>
-                  <span>{member.role}</span>
+                <span className="team-avatar grid size-[42px] place-items-center rounded-[13px] bg-[var(--brand-soft)] text-[11px] font-bold text-[var(--brand-deep)] max-[1150px]:col-start-1 max-[1150px]:row-span-2 max-[1150px]:row-start-1">{initials(member.name)}</span>
+                <div className="team-copy min-w-0 max-[1150px]:col-start-2 max-[1150px]:row-start-1">
+                  <strong className="mb-1 block text-[11px] font-[650]">{member.name}</strong>
+                  <span className="text-[10px] text-[var(--muted)]">{member.role}</span>
                 </div>
-                <div className="team-schedule">
-                  {member.pay?.schedule.length ? <><strong>{scheduleLabel(member.pay)}</strong><small>{scheduleTimesLabel(member.pay)}</small></> : <span>Sin horario</span>}
+                <div className="team-schedule max-[1150px]:col-start-2 max-[1150px]:row-start-2">
+                  {member.pay?.schedule.length ? <><strong className="block text-[11px] font-semibold">{scheduleLabel(member.pay)}</strong><small className="mt-1 block text-[9px] text-[var(--muted)]">{scheduleTimesLabel(member.pay)}</small></> : <span className="text-[10px] text-[var(--muted)]">Sin horario</span>}
                 </div>
-                <div className="team-rate">{member.pay?.rate ? <><strong>{money(member.pay.rate)}</strong><small>por {member.pay.basis === "hour" ? "hora" : "día"}</small></> : <span>Sin configurar</span>}</div>
-                <div className="team-estimate">{member.pay?.rate ? <strong>{money(monthlyPayEstimate(member.pay))}</strong> : <span>—</span>}</div>
-                <div className="team-status"><i className={member.clockedIn && member.active ? "online" : ""} /><span>{!member.active ? "Inactivo" : member.clockedIn ? "En turno" : "Fuera de turno"}</span></div>
+                <div className="team-rate max-[1150px]:col-start-2 max-[1150px]:row-start-3">{member.pay?.rate ? <><strong className="block text-[11px] font-semibold">{money(member.pay.rate)}</strong><small className="mt-1 block text-[9px] text-[var(--muted)]">por {member.pay.basis === "hour" ? "hora" : "día"}</small></> : <span className="text-[10px] text-[var(--muted)]">Sin configurar</span>}</div>
+                <div className="team-estimate max-[1150px]:col-start-3 max-[1150px]:row-start-2 max-[1150px]:text-right">{member.pay?.rate ? <strong className="text-[11px] font-semibold">{money(monthlyPayEstimate(member.pay))}</strong> : <span className="text-[10px] text-[var(--muted)]">—</span>}</div>
+                <div className="team-status flex items-center gap-[7px] text-[9px] whitespace-nowrap text-[var(--muted)] max-[1150px]:col-start-3 max-[1150px]:row-start-3 max-[1150px]:justify-end"><i className={`size-1.5 shrink-0 rounded-full ${member.clockedIn && member.active ? "bg-[#5caa72]" : "bg-[var(--muted)]"}`} /><span>{!member.active ? "Inactivo" : member.clockedIn ? "En turno" : "Fuera de turno"}</span></div>
                 <motion.button
                   whileTap={press}
-                  className="edit-product"
+                  className="edit-product !flex !items-center !gap-1.5 !text-[10px] !text-[var(--brand)] max-[1150px]:col-start-3 max-[1150px]:row-start-1"
                   aria-label={`Editar ${member.name}`}
                   onClick={() => {
                     setConfirmDelete(false);
@@ -211,7 +218,7 @@ export function TeamManager() {
               <p>Probá con otro nombre o rol.</p>
             </div>
           )}
-          <p className="help-copy">
+          <p className="help-copy !border-t !border-[var(--border)] !px-6 !pt-3.5 !pb-[19px] !text-[9px] max-[760px]:!px-4 max-[760px]:!py-3">
             Datos de demostración guardados únicamente en este navegador.
           </p>
         </section>
@@ -282,7 +289,7 @@ function MemberEditor({
       onClick={onClose}
     >
       <motion.section
-        className="product-modal member-modal member-modal-access"
+        className={`${modalClass} member-modal-access !h-auto`}
         variants={modalVariants}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
@@ -296,15 +303,15 @@ function MemberEditor({
         >
           <X size={20} />
         </button>
-        <div className="editor-heading">
+        <div className="editor-heading !shrink-0 !px-[30px] !pt-7 !pb-1 max-[760px]:!px-5 max-[760px]:!pt-6">
           <span className="eyebrow">EQUIPO</span>
           <h2 id="member-title">
             {draft.id ? "Editar empleado" : "Nuevo empleado"}
           </h2>
           <p>Configurá el acceso, la jornada y el sueldo estimado.</p>
         </div>
-        <form className="product-form" onSubmit={submit} noValidate>
-          <div className="member-form-body">
+        <form className={modalFormClass} onSubmit={submit} noValidate>
+          <div className={`${modalBodyClass} !flex-[0_1_auto] !pt-3 !pb-4 [&_.field]:!mb-3 [&_.field_input]:!border-[var(--border)] [&_.field_input]:!bg-[var(--surface)] [&_.field_input]:!text-[var(--text)] [&_.field_select]:!border-[var(--border)] [&_.field_select]:!bg-[var(--surface)] [&_.field_select]:!text-[var(--text)]`}>
           <label className="field">
             Nombre completo
             <input
@@ -316,7 +323,7 @@ function MemberEditor({
               }
             />
           </label>
-          <div className="field-row">
+          <div className="field-row !grid-cols-2 max-[349px]:!grid-cols-1">
             <label className="field">
               Rol
               <select
@@ -351,7 +358,7 @@ function MemberEditor({
               <small id="pin-help">4 números, sin repetir.</small>
             </label>
           </div>
-          <label className="availability-control">
+          <label className="availability-control !m-0 !items-center !px-3 !py-2.5">
             <input
               type="checkbox"
               checked={draft.active}
@@ -376,14 +383,14 @@ function MemberEditor({
           </div>
           {error && (
             <motion.p
-              className="form-error"
+              className="form-error !mx-[30px] !mt-0 !mb-2.5 shrink-0 max-[760px]:!mx-5 max-[760px]:!mb-2"
               initial={{ opacity: 0, y: 3 }}
               animate={{ opacity: 1, y: 0 }}
             >
               {error}
             </motion.p>
           )}
-          <div className="form-actions">
+          <div className={modalActionsClass}>
             {draft.id > 0 && !confirmDelete && (
               <button
                 type="button"
@@ -447,52 +454,52 @@ function TeamSetupDialog({ mode, pay, onCancel, onApply }: {
     onApply(draft.rate || draft.schedule.length ? draft : undefined);
   };
   return <motion.div className="modal-backdrop" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={onCancel}>
-    <motion.section className={`product-modal member-modal team-setup-modal team-setup-${mode}`} variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="team-setup-title">
+    <motion.section className={`${modalClass} team-setup-modal ${mode === "schedule" ? "!h-[min(690px,calc(100dvh-32px))]" : "!h-[min(420px,calc(100dvh-32px))]"}`} variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="team-setup-title">
       <button type="button" className="icon-btn close-modal" aria-label="Volver al empleado" onClick={onCancel}><X size={20} /></button>
-      <div className="editor-heading">
+      <div className="editor-heading !shrink-0 !px-[30px] !pt-7 !pb-[18px] max-[760px]:!px-5 max-[760px]:!pt-6 max-[760px]:!pb-[15px]">
         <span className="eyebrow">EQUIPO</span>
         <h2 id="team-setup-title">{mode === "schedule" ? "Jornada semanal" : "Tarifa de pago"}</h2>
         <p>{mode === "schedule" ? "Elegí los días y definí el horario de cada uno." : "Configurá cuánto cobra el empleado."}</p>
       </div>
-      <form className="product-form" onSubmit={submit} noValidate>
-        <div className="member-form-body">
+      <form className={modalFormClass} onSubmit={submit} noValidate>
+        <div className={`${modalBodyClass} [&_.field_input]:!border-[var(--border)] [&_.field_input]:!bg-[var(--surface)] [&_.field_input]:!text-[var(--text)] [&_.field_select]:!border-[var(--border)] [&_.field_select]:!bg-[var(--surface)] [&_.field_select]:!text-[var(--text)]`}>
           {mode === "schedule" ? <>
-            <fieldset className="team-pay-days">
-              <legend>Días de trabajo</legend>
-              <div>{weekdays.map(({ day, label }) => {
+            <fieldset className="m-0 min-w-0 border-0 p-0">
+              <legend className="mb-[9px] text-[10px] text-[var(--muted)]">Días de trabajo</legend>
+              <div className="grid grid-cols-7 gap-1.5">{weekdays.map(({ day, label }) => {
                 const selected = draft.schedule.some((item) => item.day === day);
-                return <button type="button" aria-pressed={selected} className={selected ? "selected" : ""} key={day} onClick={() => updateSchedule(selected ? draft.schedule.filter((item) => item.day !== day) : [...draft.schedule, { day, start: "08:00", end: "16:00" }])}>{label}</button>;
+                return <button type="button" aria-pressed={selected} className={`min-h-9 rounded-lg !border !text-center !text-[10px] ${selected ? "!border-[var(--brand)] !bg-[var(--brand-soft)] !font-[650] !text-[var(--brand-deep)]" : "!border-[var(--border)] !bg-[var(--surface)] !text-[var(--muted)]"}`} key={day} onClick={() => updateSchedule(selected ? draft.schedule.filter((item) => item.day !== day) : [...draft.schedule, { day, start: "08:00", end: "16:00" }])}>{label}</button>;
               })}</div>
             </fieldset>
-            <div className="team-day-schedules" aria-label="Horarios por día">
-              {!!draft.schedule.length && <div className="team-day-schedules-head" aria-hidden="true"><span>Día</span><span>Entrada</span><span>Salida</span></div>}
+            <div className="mt-3.5 grid gap-[7px]" aria-label="Horarios por día">
+              {!!draft.schedule.length && <div className={`${scheduleColumns} px-2.5 text-[9px] text-[var(--muted)]`} aria-hidden="true"><span>Día</span><span>Entrada</span><span>Salida</span></div>}
               {weekdays.filter(({ day }) => draft.schedule.some((item) => item.day === day)).map(({ day, label }) => {
                 const workday = draft.schedule.find((item) => item.day === day)!;
                 const updateTime = (field: "start" | "end", value: string) => updateSchedule(draft.schedule.map((item) => item.day === day ? { ...item, [field]: value } : item));
-                return <div className="team-day-schedule" key={day}>
-                  <strong>{label}</strong>
-                  <input type="time" aria-label={`Entrada ${label}`} value={workday.start} onChange={(event) => updateTime("start", event.target.value)} />
-                  <input type="time" aria-label={`Salida ${label}`} value={workday.end} onChange={(event) => updateTime("end", event.target.value)} />
+                return <div className={`${scheduleColumns} rounded-[9px] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-[7px]`} key={day}>
+                  <strong className="!text-[11px]">{label}</strong>
+                  <input className="h-[34px] w-full min-w-0 rounded-[7px] border border-[var(--border)] bg-[var(--surface)] px-2 !text-[11px] text-[var(--text)] [color-scheme:light] in-data-[theme=dark]:[color-scheme:dark]" type="time" aria-label={`Entrada ${label}`} value={workday.start} onChange={(event) => updateTime("start", event.target.value)} />
+                  <input className="h-[34px] w-full min-w-0 rounded-[7px] border border-[var(--border)] bg-[var(--surface)] px-2 !text-[11px] text-[var(--text)] [color-scheme:light] in-data-[theme=dark]:[color-scheme:dark]" type="time" aria-label={`Salida ${label}`} value={workday.end} onChange={(event) => updateTime("end", event.target.value)} />
                 </div>;
               })}
-              {!draft.schedule.length && <p>Seleccioná los días que trabaja el empleado.</p>}
+              {!draft.schedule.length && <p className="!m-0 !py-[9px] !text-[10px] !text-[var(--muted)]">Seleccioná los días que trabaja el empleado.</p>}
             </div>
           </> : <>
-            <div className="team-pay-fields">
-              <label className="field">Tipo de pago
+            <div className="grid grid-cols-2 gap-3 max-[760px]:gap-[9px]">
+              <label className="field !m-0">Tipo de pago
                 <select value={draft.basis} onChange={(event) => setDraft({ ...draft, basis: event.target.value as TeamPay["basis"] })}>
                   <option value="hour">Por hora</option><option value="day">Por día</option>
                 </select>
               </label>
-              <label className="field">Importe ($)
-                <input autoFocus type="number" min="1" step="1" inputMode="numeric" value={draft.rate || ""} placeholder="0" onChange={(event) => { setError(""); setDraft({ ...draft, rate: Number(event.target.value) }); }} />
+              <label className="field !m-0">Importe ($)
+                <input className="[appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none" autoFocus type="number" min="1" step="1" inputMode="numeric" value={draft.rate || ""} placeholder="0" onChange={(event) => { setError(""); setDraft({ ...draft, rate: Number(event.target.value) }); }} />
               </label>
             </div>
-            <div className="team-setup-estimate"><span>Estimado este mes<small>{draft.schedule.length ? "Según la jornada configurada" : "Configurá la jornada para calcularlo"}</small></span><strong>{draft.schedule.length ? money(monthlyPayEstimate(draft)) : "—"}</strong></div>
+            <div className="team-setup-estimate mt-[18px] flex items-center justify-between gap-3 rounded-[9px] bg-[var(--brand-soft)] px-3 py-2.5 text-[10px] text-[var(--text)]"><span className="grid gap-[5px]">Estimado este mes<small className="text-[9px] text-[var(--muted)]">{draft.schedule.length ? "Según la jornada configurada" : "Configurá la jornada para calcularlo"}</small></span><strong className="!text-[17px]">{draft.schedule.length ? money(monthlyPayEstimate(draft)) : "—"}</strong></div>
           </>}
         </div>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <div className="form-actions">
+        {error && <p className="form-error !mx-[30px] !mt-0 !mb-2.5 shrink-0 max-[760px]:!mx-5 max-[760px]:!mb-2" role="alert">{error}</p>}
+        <div className={modalActionsClass}>
           {mode === "rate" && draft.rate > 0 && <button type="button" className="danger-text" onClick={() => onApply(draft.schedule.length ? { ...draft, rate: 0 } : undefined)}>Quitar tarifa</button>}
           <button type="button" className="button" onClick={onCancel}>Cancelar</button>
           <button className="button primary">Aplicar cambios</button>

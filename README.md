@@ -11,6 +11,20 @@ pnpm dev
 
 Abrir http://127.0.0.1:5173. Menú público: http://127.0.0.1:5173/#menu.
 
+## Desarrollo con Docker
+
+Con Docker Desktop abierto, desde la carpeta del proyecto ejecutá:
+
+```sh
+docker compose up --build
+```
+
+Abrí http://127.0.0.1:5174. Docker usa ese puerto para que pueda funcionar junto al servidor local en el 5173. Si necesitás otro, configurá `FRONTEND_PORT` antes de iniciar Compose (por ejemplo, en PowerShell: `$env:FRONTEND_PORT = "5175"`). Los cambios en el código se reflejan automáticamente; la primera ejecución descarga la imagen e instala las dependencias. Para detenerlo, presioná `Ctrl+C` y ejecutá `docker compose down`. Para iniciarlo en segundo plano usá `docker compose up -d --build`; sus registros se consultan con `docker compose logs -f frontend`.
+
+Las dependencias de Linux se guardan en un volumen independiente de `node_modules` de Windows. Si se modifica `pnpm-lock.yaml`, reiniciá el servicio con `docker compose up --build` para actualizar las dependencias. La configuración habilita el seguimiento de archivos por sondeo para Windows y Docker Desktop.
+
+Esta configuración es para desarrollo local. La aplicación sigue siendo una demostración sin servidor ni base de datos: sus datos permanecen en el `localStorage` del navegador.
+
 ```sh
 pnpm build
 pnpm exec playwright install chromium
@@ -42,7 +56,8 @@ Resumen, POS interactivo, catálogo, pedidos, caja, menú digital, reportes, equ
 - `src/components/TeamManager.tsx`: usuarios, roles, códigos e historial de fichajes.
 - `src/data.ts`: datos y fotografías de demostración.
 - `src/motion.tsx`: tokens, variantes, proveedor y componentes animados compartidos.
-- `src/styles.css`: estilos generales, temas y componentes compartidos.
+- `src/styles/`: estilos generales y por área, importados en orden desde `src/main.tsx`.
+- `docs/frontend-architecture.md`: mapa de responsabilidades del frontend.
 - `docs/design-system.md`: decisiones visuales y alcance.
 
 Las fotografías se sirven desde Unsplash y las fuentes desde Google Fonts; necesitan conexión. Las fechas y cifras son ilustrativas.
