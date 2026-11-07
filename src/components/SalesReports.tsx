@@ -22,6 +22,11 @@ const monthFormatter = new Intl.DateTimeFormat("es-AR", {
   year: "numeric",
 });
 const integerFormatter = new Intl.NumberFormat("es-AR");
+const barRowClass = "my-[17px] flex items-center gap-3 text-[10px] max-[760px]:gap-2";
+const barLabelClass = "w-[82px] shrink-0 truncate font-medium max-[760px]:w-[70px]";
+const barTrackClass = "h-2 flex-1 overflow-hidden rounded-lg bg-[var(--brand-wash)] in-data-[theme=dark]:bg-[#34232b]";
+const barValueClass = "min-w-[78px] text-right text-[9px] font-[550] text-[var(--text)] tabular-nums max-[760px]:min-w-[70px] max-[760px]:text-[8px]";
+const performanceClass = "grid grid-cols-[27px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[var(--border)] py-[11px] last:border-b-0";
 
 export function SalesReports({ products }: { products: Product[] }) {
   const [month, setMonth] = useState(() => {
@@ -111,18 +116,19 @@ export function SalesReports({ products }: { products: Product[] }) {
     setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
 
   return (
-    <div className="sales-reports">
-      <div className="reports-toolbar">
+    <div className="grid gap-[18px]">
+      <div className="flex items-center justify-between gap-[18px] max-[760px]:flex-col max-[760px]:items-start">
         <div>
           <span className="eyebrow">LECTURA DEL NEGOCIO</span>
-          <p>Ventas, cubiertos y productos para entender cómo se mueve Carmela.</p>
+          <p className="!mt-[5px] !text-[11px]">Ventas, cubiertos y productos para entender cómo se mueve Carmela.</p>
         </div>
-        <div className="report-month-control" aria-label="Período del reporte">
-          <motion.button whileTap={press} aria-label="Mes anterior" onClick={() => moveMonth(-1)}>
+        <div className="flex items-center gap-2 rounded-[11px] border border-[var(--border)] bg-[var(--surface)] p-1 max-[760px]:self-stretch max-[760px]:justify-between" aria-label="Período del reporte">
+          <motion.button className="!grid size-[30px] place-items-center rounded-lg !text-[var(--muted)] hover:!bg-[var(--brand-wash)] hover:!text-[var(--brand)]" whileTap={press} aria-label="Mes anterior" onClick={() => moveMonth(-1)}>
             <ChevronLeft size={17} />
           </motion.button>
-          <strong>{monthFormatter.format(month)}</strong>
+          <strong className="min-w-[130px] text-center text-[11px] font-semibold capitalize">{monthFormatter.format(month)}</strong>
           <motion.button
+            className="!grid size-[30px] place-items-center rounded-lg !text-[var(--muted)] hover:enabled:!bg-[var(--brand-wash)] hover:enabled:!text-[var(--brand)]"
             whileTap={press}
             aria-label="Mes siguiente"
             disabled={month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()}
@@ -133,103 +139,103 @@ export function SalesReports({ products }: { products: Product[] }) {
         </div>
       </div>
 
-      <motion.div className="metrics reports-metrics" variants={staggerContainer} initial="hidden" animate="visible">
+      <motion.div className="metrics !mb-0 !grid-cols-4 max-[1100px]:!grid-cols-2 max-[760px]:!gap-2.5" variants={staggerContainer} initial="hidden" animate="visible">
         <ReportMetric icon={<Wallet size={18} />} label="Ventas del mes" value={money(totalSales)} detail={`${selectedSales.length} cuentas cerradas`} />
         <ReportMetric icon={<UsersRound size={18} />} label="Cubiertos" value={integerFormatter.format(covers)} detail="Personas registradas en las mesas" />
         <ReportMetric icon={<ReceiptText size={18} />} label="Ticket promedio" value={money(averageTicket)} detail="Promedio por cuenta cerrada" />
         <ReportMetric icon={<Coffee size={18} />} label="Unidades vendidas" value={integerFormatter.format(itemsSold)} detail="Productos comandados y cobrados" />
       </motion.div>
 
-      <div className="reports-grid">
-        <section className="panel report-sales-chart">
-          <div className="panel-heading">
+      <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,.85fr)] items-stretch gap-4 max-[1100px]:grid-cols-2 max-[760px]:grid-cols-1">
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]">
             <div><h2>Ventas por semana</h2><p>Facturación de cada tramo del mes.</p></div>
-            <span className="report-chart-legend"><i /> Ventas</span>
+            <span className="flex items-center gap-1.5 text-[9px] text-[var(--muted)]"><i className="size-[7px] rounded-full bg-[var(--brand)]" /> Ventas</span>
           </div>
           {selectedSales.length ? (
-            <div className="weekly-chart" role="img" aria-label="Ventas semanales del mes">
+            <div className="grid h-[205px] grid-cols-5 gap-2.5 px-1 pt-1 max-[760px]:h-[180px] max-[760px]:gap-[5px]" role="img" aria-label="Ventas semanales del mes">
               {weeks.map((week) => (
-                <div className="weekly-column" key={week.label}>
-                  <span className="weekly-value">{week.total ? money(week.total) : "—"}</span>
-                  <div className="weekly-track"><motion.i initial={{ height: 0 }} animate={{ height: `${week.total ? Math.max(5, week.total / maxWeek * 100) : 0}%` }} transition={{ duration: .42 }} /></div>
-                  <small>{week.label}</small>
+                <div className="grid min-w-0 grid-rows-[23px_minmax(0,1fr)_22px] items-end justify-items-center" key={week.label}>
+                  <span className="max-w-full truncate text-[8px] text-[var(--muted)] max-[760px]:text-[7px]">{week.total ? money(week.total) : "—"}</span>
+                  <div className="flex h-full w-[min(42px,70%)] items-end justify-center border-b border-[var(--border)] [background:linear-gradient(to_top,transparent_calc(100%-1px),var(--border)_calc(100%-1px))]"><motion.i className="block min-h-0 w-full rounded-t-[7px] rounded-b-[2px] bg-[var(--brand)]" initial={{ height: 0 }} animate={{ height: `${week.total ? Math.max(5, week.total / maxWeek * 100) : 0}%` }} transition={{ duration: .42 }} /></div>
+                  <small className="self-end text-[8px] text-[var(--muted)]">{week.label}</small>
                 </div>
               ))}
             </div>
           ) : <ReportEmpty icon={<Wallet size={22} />} title="Todavía no hay ventas en este mes" copy="Las cuentas cobradas desde el punto de venta van a aparecer acá." />}
         </section>
 
-        <section className="panel category-report">
-          <div className="panel-heading"><div><h2>Ventas por categoría</h2><p>Qué parte de la facturación aporta cada rubro.</p></div></div>
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]"><div><h2>Ventas por categoría</h2><p>Qué parte de la facturación aporta cada rubro.</p></div></div>
           {categoryStats.length ? categoryStats.map(([name, amount]) => (
-            <div className="report-row" key={name}>
-              <strong>{name}</strong>
-              <div><span style={{ width: `${totalSales ? amount / totalSales * 100 : 0}%` }} /></div>
-              <b>{money(amount)}</b>
+            <div className={barRowClass} key={name}>
+              <strong className={barLabelClass}>{name}</strong>
+              <div className={barTrackClass}><span className="block h-full rounded-lg bg-[var(--brand)]" style={{ width: `${totalSales ? amount / totalSales * 100 : 0}%` }} /></div>
+              <b className={barValueClass}>{money(amount)}</b>
             </div>
           )) : <ReportEmpty icon={<Package size={22} />} title="Sin ventas por categoría" copy="El detalle se completa al cerrar cuentas." />}
         </section>
 
-        <section className="panel product-performance">
-          <div className="panel-heading"><div><h2>Lo que más se vende</h2><p>Productos ordenados por unidades.</p></div><ArrowUpRight size={17} className="report-positive" /></div>
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]"><div><h2>Lo que más se vende</h2><p>Productos ordenados por unidades.</p></div><ArrowUpRight size={17} className="text-[#4d9a69]" /></div>
           {topProducts.length ? topProducts.map((product, index) => (
-            <div className="performance-row" key={product.name}>
-              <span className="performance-rank">{index + 1}</span>
-              <div><strong>{product.name}</strong><small>{product.category} · {money(product.revenue)} vendidos</small></div>
-              <b>{integerFormatter.format(product.quantity)} <small>un.</small></b>
+            <div className={performanceClass} key={product.name}>
+              <span className="grid size-[25px] place-items-center rounded-lg bg-[var(--brand-wash)] text-[9px] font-bold text-[var(--brand-deep)]">{index + 1}</span>
+              <div className="min-w-0"><strong className="block truncate text-[10px] font-semibold">{product.name}</strong><small className="mt-1 block truncate text-[8px] text-[var(--muted)]">{product.category} · {money(product.revenue)} vendidos</small></div>
+              <b className="text-[10px] font-semibold whitespace-nowrap">{integerFormatter.format(product.quantity)} <small className="text-[8px] font-normal text-[var(--muted)]">un.</small></b>
             </div>
           )) : <ReportEmpty icon={<Coffee size={22} />} title="Todavía no hay productos vendidos" copy="Acá vas a ver cuáles son los favoritos del mes." />}
         </section>
 
-        <section className="panel product-performance unsold-products">
-          <div className="panel-heading"><div><h2>Sin ventas este mes</h2><p>Productos activos que todavía no salieron.</p></div><ArrowDownRight size={17} className="report-neutral" /></div>
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]"><div><h2>Sin ventas este mes</h2><p>Productos activos que todavía no salieron.</p></div><ArrowDownRight size={17} className="text-[var(--muted)]" /></div>
           {selectedSales.length === 0 ? (
             <ReportEmpty icon={<Package size={22} />} title="Esperando las primeras ventas" copy="Cuando haya movimientos del mes, vas a poder ver qué productos quedaron sin vender." />
           ) : noSalesProducts.length ? noSalesProducts.map((product) => (
-            <div className="performance-row" key={product.id}>
-              <span className="unsold-product-dot" />
-              <div><strong>{product.name}</strong><small>{product.category}</small></div>
-              <b className="no-sales-label">Sin ventas</b>
+            <div className={performanceClass} key={product.id}>
+              <span className="size-2 justify-self-center rounded-full border-2 border-[#c8bfc2]" />
+              <div className="min-w-0"><strong className="block truncate text-[10px] font-semibold">{product.name}</strong><small className="mt-1 block truncate text-[8px] text-[var(--muted)]">{product.category}</small></div>
+              <b className="text-[8px] font-[450] whitespace-nowrap text-[var(--muted)]">Sin ventas</b>
             </div>
           )) : <ReportEmpty icon={<Package size={22} />} title="Todos tuvieron movimiento" copy="Cada producto del catálogo registró ventas este mes." />}
         </section>
 
-        <section className="panel payment-report">
-          <div className="panel-heading"><div><h2>Medios de pago</h2><p>Cómo se cobraron las cuentas del mes.</p></div></div>
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]"><div><h2>Medios de pago</h2><p>Cómo se cobraron las cuentas del mes.</p></div></div>
           {paymentStats.length ? paymentStats.map(([name, amount]) => (
-            <div className="report-row" key={name}>
-              <strong>{name}</strong>
-              <div><span style={{ width: `${totalSales ? amount / totalSales * 100 : 0}%` }} /></div>
-              <b>{money(amount)}</b>
+            <div className={barRowClass} key={name}>
+              <strong className={barLabelClass}>{name}</strong>
+              <div className={barTrackClass}><span className="block h-full rounded-lg bg-[var(--brand)]" style={{ width: `${totalSales ? amount / totalSales * 100 : 0}%` }} /></div>
+              <b className={barValueClass}>{money(amount)}</b>
             </div>
           )) : <ReportEmpty icon={<Wallet size={22} />} title="Todavía no hay cobros" copy="El desglose por medio de pago aparece al cerrar ventas." />}
         </section>
 
-        <section className="panel recent-sales-report">
-          <div className="panel-heading"><div><h2>Últimas cuentas del mes</h2><p>Ventas cerradas en el período seleccionado.</p></div></div>
+        <section className="panel min-w-0">
+          <div className="panel-heading !mb-[18px]"><div><h2>Últimas cuentas del mes</h2><p>Ventas cerradas en el período seleccionado.</p></div></div>
           {recentSales.length ? (
-            <div className="report-sales-list">
+            <div className="grid">
               {recentSales.map((sale) => (
-                <div className="report-sale-row" key={sale.id}>
-                  <span className="report-sale-icon"><ReceiptText size={16} /></span>
-                  <div><strong>{sale.tableName}</strong><small>{new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(sale.closedAt))} · {sale.guests} {sale.guests === 1 ? "cubierto" : "cubiertos"}</small></div>
-                  <span>{sale.payment}</span>
-                  <b>{money(sale.total)}</b>
+                <div className="grid grid-cols-[32px_minmax(0,1fr)_auto_auto] items-center gap-2.5 border-b border-[var(--border)] py-[11px] last:border-b-0 max-[760px]:grid-cols-[30px_minmax(0,1fr)_auto]" key={sale.id}>
+                  <span className="grid size-[30px] place-items-center rounded-[9px] bg-[var(--brand-wash)] text-[var(--brand)]"><ReceiptText size={16} /></span>
+                  <div className="min-w-0"><strong className="block truncate text-[10px]">{sale.tableName}</strong><small className="mt-[3px] block truncate text-[8px] text-[var(--muted)]">{new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(sale.closedAt))} · {sale.guests} {sale.guests === 1 ? "cubierto" : "cubiertos"}</small></div>
+                  <span className="mt-[3px] text-[8px] text-[var(--muted)] max-[760px]:hidden">{sale.payment}</span>
+                  <b className="text-[10px] whitespace-nowrap">{money(sale.total)}</b>
                 </div>
               ))}
             </div>
           ) : <ReportEmpty icon={<ReceiptText size={22} />} title="No hay cuentas para mostrar" copy="Las ventas cobradas van a quedar registradas en este historial." />}
         </section>
       </div>
-      <p className="reports-data-note">Los cubiertos usan la cantidad de personas configurada en cada mesa al cobrar. El historial local comienza desde que se habilitó el registro y no incluye ventas anteriores.</p>
+      <p className="!text-[9px] !text-[var(--muted)] max-[760px]:!text-[8px]">Los cubiertos usan la cantidad de personas configurada en cada mesa al cobrar. El historial local comienza desde que se habilitó el registro y no incluye ventas anteriores.</p>
     </div>
   );
 }
 
 function ReportMetric({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }) {
-  return <motion.section variants={fadeUp} className="metric"><div className="metric-label"><span>{label}</span><span className="round-icon">{icon}</span></div><strong className="metric-value">{value}</strong><span className="metric-bottom">{detail}</span></motion.section>;
+  return <motion.section variants={fadeUp} className="metric !min-w-0 max-[760px]:!p-3.5"><div className="metric-label"><span>{label}</span><span className="round-icon">{icon}</span></div><strong className="metric-value !text-[25px] !whitespace-nowrap max-[760px]:!text-xl">{value}</strong><span className="metric-bottom max-[760px]:!text-[8px]">{detail}</span></motion.section>;
 }
 
 function ReportEmpty({ icon, title, copy }: { icon: ReactNode; title: string; copy: string }) {
-  return <div className="report-empty">{icon}<strong>{title}</strong><p>{copy}</p></div>;
+  return <div className="flex min-h-[142px] flex-col items-center justify-center gap-[7px] text-center text-[var(--muted)] [&>svg]:mb-0.5 [&>svg]:text-[var(--brand)]">{icon}<strong className="text-[10px] text-[var(--text)]">{title}</strong><p className="max-w-[280px] !text-[9px]">{copy}</p></div>;
 }
