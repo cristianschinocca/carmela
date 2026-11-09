@@ -9,7 +9,16 @@ html[data-theme='dark'] .account-dialog-scrim{background:rgba(0,0,0,.64)}
 .account-dialog-scrim .account-heading h2{max-width:100%;margin:0;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
 .account-heading-status{padding:5px 8px;border-radius:7px;background:color-mix(in srgb,#42a5c5 15%,var(--surface));color:#2483a2;font-size:10px;font-weight:600}
 html[data-theme='dark'] .account-heading-status{color:#8bd5ec}
-.account-guests{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;white-space:nowrap}
+.account-guests{position:relative;display:inline-flex;color:var(--muted);font-size:11px;white-space:nowrap}
+.account-guests .account-guests-trigger{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 8px;border-radius:8px;color:var(--muted)}
+.account-guests-trigger:hover,.account-guests-trigger[aria-expanded='true']{background:var(--brand-soft);color:var(--brand-deep)}
+.account-guests-popover{position:absolute;top:calc(100% + 6px);left:0;z-index:11;min-width:164px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 16px 38px #0003}
+.account-guests-popover>span{display:block;margin-bottom:9px;color:var(--muted);font-size:10px}
+.account-guests-popover>div{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.account-guests-popover strong{color:var(--text);font-size:13px}
+.account-guests-popover button{display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--border);border-radius:7px;color:var(--muted)}
+.account-guests-popover button:hover:not(:disabled){background:var(--brand-soft);color:var(--brand-deep)}
+.account-guests button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .account-operator{position:relative;max-width:100%;min-width:0}
 .account-operator-trigger{display:flex;max-width:100%;min-width:0;height:34px;align-items:center;gap:7px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:color-mix(in srgb,var(--text,#252d28) 3%,var(--surface));color:var(--muted);font-size:11px}
 .account-operator-trigger>span{min-width:0;overflow:hidden;color:var(--text,#252d28);font-weight:600;text-overflow:ellipsis;white-space:nowrap}.account-operator-trigger small{color:var(--muted);font-weight:400}.account-operator-trigger>svg:last-child{transition:transform .18s ease}.account-operator-trigger[aria-expanded='true']>svg:last-child{transform:rotate(180deg)}

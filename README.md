@@ -59,5 +59,7 @@ Resumen, POS interactivo, catálogo, pedidos, caja, menú digital, reportes, equ
 - `src/styles/`: estilos generales y por área, importados en orden desde `src/main.tsx`.
 - `docs/frontend-architecture.md`: mapa de responsabilidades del frontend.
 - `docs/design-system.md`: decisiones visuales y alcance.
+- `docs/arquitectura-objetivo.md`: arquitectura prevista, seguridad y etapas de implementación.
+- `docs/costos-operacion.md`: presupuesto orientativo y controles para la infraestructura.
 
 Las fotografías se sirven desde Unsplash y las fuentes desde Google Fonts; necesitan conexión. Las fechas y cifras son ilustrativas.

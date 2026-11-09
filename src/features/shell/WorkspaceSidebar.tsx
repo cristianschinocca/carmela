@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { Boxes, ChartNoAxesCombined, ChevronDown, Clock3, LayoutDashboard, LifeBuoy, LogOut, MessageSquareText, Moon, Package, QrCode, Settings, ShoppingBag, Sun, UsersRound } from "lucide-react";
 import type { TeamMember } from "../../stores/team";
 import { press } from "../../motion";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 
 const nav = [
   ["Resumen", LayoutDashboard],
@@ -32,25 +33,19 @@ type Props = {
 export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMember, page, go, logout, darkMode, setDarkMode, toast }: Props) {
   return (
     <motion.aside className={side ? "sidebar visible" : "sidebar"}>
-      <button
-        className="workspace profile-workspace"
-        aria-expanded={profileOpen}
-        aria-controls="profile-menu"
-        onClick={() => setProfileOpen((open) => !open)}
-      >
-        <div className="avatar">{sessionMember.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
-        <span>
-          <strong>{sessionMember.name}</strong>
-          <small>{sessionMember.role}</small>
-        </span>
-        <ChevronDown size={15} />
-      </button>
-      {profileOpen && (
-        <div id="profile-menu" className="mx-1 -mt-5 mb-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg">
-          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs hover:bg-[var(--brand-soft)]" onClick={() => go("Configuración")}><Settings size={15} /> Configuración</button>
-          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs text-[var(--brand)] hover:bg-[var(--brand-soft)]" onClick={logout}><LogOut size={15} /> Cerrar sesión</button>
-        </div>
-      )}
+      <DropdownMenu modal={false} open={profileOpen} onOpenChange={setProfileOpen}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className="workspace profile-workspace">
+            <div className="avatar">{sessionMember.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
+            <span><strong>{sessionMember.name}</strong><small>{sessionMember.role}</small></span>
+            <ChevronDown size={15} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={6} className="!z-[100] w-[var(--radix-dropdown-menu-trigger-width)] !rounded-xl !border-[var(--border)] !bg-[var(--surface)] !p-1.5 !text-[var(--text)] shadow-lg">
+          <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs focus:!bg-[var(--brand-soft)] focus:!text-[var(--text)]" onSelect={() => go("Configuración")}><Settings size={15} />Configuración</DropdownMenuItem>
+          <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs !text-[var(--brand)] focus:!bg-[var(--brand-soft)] focus:!text-[var(--brand)]" onSelect={logout}><LogOut size={15} />Cerrar sesión</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className="nav-label">TU ESPACIO DE TRABAJO</span>
       <nav>
         {nav.map(([label, Icon], i) => (

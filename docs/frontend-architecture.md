@@ -1,5 +1,7 @@
 # Estructura del frontend
 
+Este documento describe la demostración actual. La arquitectura futura con API, PostgreSQL y servicios alojados está definida en [Arquitectura objetivo](arquitectura-objetivo.md); todavía no representa funcionalidades implementadas.
+
 - `src/App.tsx`: composición de pantallas, estado compartido y navegación de la demostración.
 - `src/features/shell/`: navegación y estructura visible en todas las pantallas internas.
 - `src/features/dashboard/`, `menu/`, `settings/`: pantallas administrativas con sus propias dependencias y props explícitas.

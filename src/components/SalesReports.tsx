@@ -16,6 +16,7 @@ import type { Product } from "../data";
 import { money } from "../data";
 import { fadeUp, press, staggerContainer } from "../motion";
 import { loadSales } from "../stores/sales";
+import { WeeklySalesChart } from "../features/dashboard/WeeklySalesChart";
 
 const monthFormatter = new Intl.DateTimeFormat("es-AR", {
   month: "long",
@@ -98,19 +99,6 @@ export function SalesReports({ products }: { products: Product[] }) {
   const recentSales = [...selectedSales]
     .sort((a, b) => b.closedAt.localeCompare(a.closedAt))
     .slice(0, 6);
-  const monthDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  const weeks = Array.from({ length: Math.ceil(monthDays / 7) }, (_, index) => {
-    const fromDay = index * 7 + 1;
-    const toDay = Math.min(fromDay + 6, monthDays);
-    const total = selectedSales
-      .filter((sale) => {
-        const day = new Date(sale.closedAt).getDate();
-        return day >= fromDay && day <= toDay;
-      })
-      .reduce((sum, sale) => sum + sale.total, 0);
-    return { label: `${fromDay}–${toDay}`, total };
-  });
-  const maxWeek = Math.max(...weeks.map((week) => week.total), 1);
 
   const moveMonth = (amount: number) =>
     setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -147,23 +135,7 @@ export function SalesReports({ products }: { products: Product[] }) {
       </motion.div>
 
       <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,.85fr)] items-stretch gap-4 max-[1100px]:grid-cols-2 max-[760px]:grid-cols-1">
-        <section className="panel min-w-0">
-          <div className="panel-heading !mb-[18px]">
-            <div><h2>Ventas por semana</h2><p>Facturación de cada tramo del mes.</p></div>
-            <span className="flex items-center gap-1.5 text-[9px] text-[var(--muted)]"><i className="size-[7px] rounded-full bg-[var(--brand)]" /> Ventas</span>
-          </div>
-          {selectedSales.length ? (
-            <div className="grid h-[205px] grid-cols-5 gap-2.5 px-1 pt-1 max-[760px]:h-[180px] max-[760px]:gap-[5px]" role="img" aria-label="Ventas semanales del mes">
-              {weeks.map((week) => (
-                <div className="grid min-w-0 grid-rows-[23px_minmax(0,1fr)_22px] items-end justify-items-center" key={week.label}>
-                  <span className="max-w-full truncate text-[8px] text-[var(--muted)] max-[760px]:text-[7px]">{week.total ? money(week.total) : "—"}</span>
-                  <div className="flex h-full w-[min(42px,70%)] items-end justify-center border-b border-[var(--border)] [background:linear-gradient(to_top,transparent_calc(100%-1px),var(--border)_calc(100%-1px))]"><motion.i className="block min-h-0 w-full rounded-t-[7px] rounded-b-[2px] bg-[var(--brand)]" initial={{ height: 0 }} animate={{ height: `${week.total ? Math.max(5, week.total / maxWeek * 100) : 0}%` }} transition={{ duration: .42 }} /></div>
-                  <small className="self-end text-[8px] text-[var(--muted)]">{week.label}</small>
-                </div>
-              ))}
-            </div>
-          ) : <ReportEmpty icon={<Wallet size={22} />} title="Todavía no hay ventas en este mes" copy="Las cuentas cobradas desde el punto de venta van a aparecer acá." />}
-        </section>
+        <WeeklySalesChart key={`${month.getFullYear()}-${month.getMonth()}`} month={month} sales={selectedSales} />
 
         <section className="panel min-w-0">
           <div className="panel-heading !mb-[18px]"><div><h2>Ventas por categoría</h2><p>Qué parte de la facturación aporta cada rubro.</p></div></div>

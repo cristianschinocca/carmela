@@ -30,8 +30,8 @@ import {
   loadTeamMembers,
   type TeamMember,
 } from "../stores/team";
-import { saveSale } from "../stores/sales";
-import { applySaleToStock, type Stock } from "../stores/inventory";
+import type { Stock } from "../stores/inventory";
+import { settleSaleLocally } from "../stock/settleSale";
 import PosCatalog from "./PosCatalog";
 import PosAccountTicket from "./PosAccountTicket";
 import PosPaymentDialog, { type PaymentMethod } from "./PosPaymentDialog";
@@ -1382,8 +1382,12 @@ export default function TablePOS({
         ...(line.note ? { note: line.note } : {}),
       })),
     };
-    saveSale(sale);
-    onStockChange(applySaleToStock(sale, products));
+    try {
+      onStockChange(settleSaleLocally(sale, products));
+    } catch {
+      onToast("No se pudo cerrar la mesa. Revisá las recetas y el almacenamiento del navegador.");
+      return;
+    }
     if (selected.area === "counter") setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
     else update((table) => ({
       ...table,
@@ -1633,6 +1637,7 @@ export default function TablePOS({
             table={selected} tableName={displayTableName(selected)} operator={operator} teamOptions={teamOptions}
             operatorMenuOpen={operatorMenuOpen} onOperatorMenuOpenChange={setOperatorMenuOpen}
             onOperatorChange={changeOperator} onClose={requestAccountClose} onEditTable={() => setEditing(true)}
+            onGuestsChange={(change) => update((table) => ({ ...table, guests: Math.max(1, Math.min(20, table.guests + change)) }))}
             dialogRef={accountDialogRef} operatorMenuRef={operatorMenuRef} operatorTriggerRef={operatorTriggerRef}
             onCategoryContainerChange={setCategoryContainer}
           >

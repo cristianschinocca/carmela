@@ -53,6 +53,14 @@ export function setStockEnabled(product: Product, current: Stock, enabled: boole
   return next;
 }
 
+export function setProductMinimum(productId: number, current: Stock, minimum: number): Stock {
+  if (!Number.isSafeInteger(minimum) || minimum < 0) throw new Error("Mínimo inválido");
+  const previous = current[productId];
+  const next = { ...current, [productId]: { quantity: previous?.quantity ?? 0, enabled: previous?.enabled ?? false, minimum } };
+  localStorage.setItem(INVENTORY_STORAGE, JSON.stringify(next));
+  return next;
+}
+
 export type StockCountInput = { productId: number; quantity: number; minimum: number };
 
 export function saveStockCountBatch(products: Product[], current: Stock, entries: StockCountInput[]) {

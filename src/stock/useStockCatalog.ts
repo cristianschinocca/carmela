@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { emptyStockCatalog, type StockCatalog } from "./types";
-import { localStockCatalogRepository, type StockCatalogRepository } from "./repository";
+import { localStockCatalogRepository, STOCK_CATALOG_CHANGED, STOCK_CATALOG_STORAGE, type StockCatalogRepository } from "./repository";
 
 export function useStockCatalog(repository: StockCatalogRepository = localStockCatalogRepository) {
   const [catalog, setCatalog] = useState<StockCatalog>(emptyStockCatalog);
@@ -15,6 +15,15 @@ export function useStockCatalog(repository: StockCatalogRepository = localStockC
       if (active) { setReadFailed(true); setError("No se pudieron leer los datos de stock guardados en este navegador."); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
+  }, [repository]);
+  useEffect(() => {
+    if (repository !== localStockCatalogRepository) return;
+    let active = true;
+    const refresh = () => { repository.load().then((data) => { if (active) { setCatalog(data); setError(""); setReadFailed(false); } }).catch(() => { if (active) { setReadFailed(true); setError("No se pudieron leer los datos de stock guardados en este navegador."); } }); };
+    const onStorage = (event: StorageEvent) => { if (event.key === STOCK_CATALOG_STORAGE) refresh(); };
+    window.addEventListener(STOCK_CATALOG_CHANGED, refresh);
+    window.addEventListener("storage", onStorage);
+    return () => { active = false; window.removeEventListener(STOCK_CATALOG_CHANGED, refresh); window.removeEventListener("storage", onStorage); };
   }, [repository]);
   const update = async (next: StockCatalog): Promise<boolean> => {
     if (readFailed || loading || saving.current) return false;
