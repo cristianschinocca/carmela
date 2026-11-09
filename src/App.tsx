@@ -16,19 +16,19 @@ import {
   money,
   type Product,
 } from "./data";
-import TablePOS from "./components/TablePOS";
-import { PaidTablesDialog } from "./components/PaidTablesDialog";
-import { ProductManager } from "./components/ProductManager";
+import TablePOS from "./components/pos/TablePOS";
+import { PaidTablesDialog } from "./components/pos/PaidTablesDialog";
+import { ProductManager } from "./components/products/ProductManager";
 import { StockWorkspace } from "./stock/StockWorkspace";
-import { StockAlerts } from "./components/StockAlerts";
+import { StockAlerts } from "./components/stock/StockAlerts";
 import { loadStock, productsWithStock, type Stock } from "./stores/inventory";
-import { TeamManager } from "./components/TeamManager";
-import { AttendanceManager } from "./components/AttendanceManager";
-import { SalesReports } from "./components/SalesReports";
-import { CashRegister } from "./components/CashRegister";
+import { TeamManager } from "./components/team/TeamManager";
+import { AttendanceManager } from "./components/attendance/AttendanceManager";
+import { SalesReports } from "./components/reports/SalesReports";
+import { CashRegister } from "./components/cash/CashRegister";
 import type { CashExpense } from "./stores/cash";
-import { PublicMenu } from "./components/PublicMenu";
-import { LoginPage } from "./components/LoginPage";
+import { PublicMenu } from "./components/menu/PublicMenu";
+import { LoginPage } from "./components/auth/LoginPage";
 import { type TeamMember } from "./stores/team";
 import { useDashboardTheme } from "./hooks/useDashboardTheme";
 import {

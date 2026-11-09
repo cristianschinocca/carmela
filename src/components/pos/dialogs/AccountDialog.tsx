@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronDown, Minus, Pencil, Plus, UserRound, UsersRound, X } from "lucide-react";
-import { modalVariants, overlayVariants, transitions } from "../../motion";
-import type { Table } from "../../pos/floorModel";
-import type { TeamMember } from "../../stores/team";
+import { modalVariants, overlayVariants, transitions } from "../../../motion";
+import type { Table } from "../../../pos/floorModel";
+import type { TeamMember } from "../../../stores/team";
 
 type Props = {
   table: Table;

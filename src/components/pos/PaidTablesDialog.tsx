@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, ReceiptText, X } from "lucide-react";
-import { money } from "../data";
-import { modalVariants, overlayVariants } from "../motion";
-import { loadSales, updateSalePayment, type SaleRecord } from "../stores/sales";
+import { money } from "../../data";
+import { modalVariants, overlayVariants } from "../../motion";
+import { loadSales, updateSalePayment, type SaleRecord } from "../../stores/sales";
 
 type Props = { open: boolean; onClose: () => void };
 export function PaidTablesDialog({ open, onClose }: Props) {

@@ -1,10 +1,10 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { motion } from "motion/react";
 import { ArrowRightLeft, BadgePercent, Check, LayoutGrid, Pencil, X } from "lucide-react";
-import { money, type Product } from "../../data";
-import { modalVariants, overlayVariants } from "../../motion";
-import { NEW_COUNTER_TARGET, type Line, type Sector, type Table } from "../../pos/floorModel";
-import type { TeamMember } from "../../stores/team";
+import { money, type Product } from "../../../data";
+import { modalVariants, overlayVariants } from "../../../motion";
+import { NEW_COUNTER_TARGET, type Line, type Sector, type Table } from "../../../pos/floorModel";
+import type { TeamMember } from "../../../stores/team";
 
 type Props = {
   lineDialogRef: RefObject<HTMLElement | null>;

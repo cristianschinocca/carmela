@@ -1,8 +1,8 @@
 import type React from "react";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { money } from "../data";
-import { fadeUp, press, staggerContainer, subtleHover } from "../motion";
+import { money } from "../../data";
+import { fadeUp, press, staggerContainer, subtleHover } from "../../motion";
 
 export function Metric({
   icon,

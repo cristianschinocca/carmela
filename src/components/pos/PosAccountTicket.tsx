@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRightLeft, BadgePercent, Check, Minus, MoveRight, Pencil, Plus, ReceiptText, Trash2, X } from "lucide-react";
-import { money, type Product } from "../data";
-import { fadeUp } from "../motion";
-import type { Line, Table } from "../pos/floorModel";
+import { money, type Product } from "../../data";
+import { fadeUp } from "../../motion";
+import type { Line, Table } from "../../pos/floorModel";
 
 type TicketLine = { line: Line; product: Product };
 

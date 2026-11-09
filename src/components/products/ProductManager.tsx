@@ -12,14 +12,14 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { money, photos, type Product } from "../data";
+import { money, photos, type Product } from "../../data";
 import {
   fadeUp,
   modalVariants,
   overlayVariants,
   press,
   staggerContainer,
-} from "../motion";
+} from "../../motion";
 
 type Props = {
   products: Product[];

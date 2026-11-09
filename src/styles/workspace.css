@@ -62,6 +62,7 @@ html[data-theme='dark'] .round-icon,html[data-theme='dark'] .segmented,html[data
 html[data-theme='dark'] .button,html[data-theme='dark'] .icon-btn{background:#201e1f;border-color:#393436;color:#eee9eb}
 html[data-theme='dark'] .button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
 html[data-theme='dark'] .profile-workspace:hover,html[data-theme='dark'] .sidebar-help button:hover{background:#242123}
+html[data-theme='dark'] .sidebar nav button:not(.active):hover:not(:disabled){background:color-mix(in srgb,var(--text) 6%,var(--surface));color:var(--text)}
 html[data-theme='dark'] nav button{color:#aaa4a6}html[data-theme='dark'] nav button.active{background:var(--brand-soft);color:#f3a4c3}
 html[data-theme='dark'] .avatar{background:#302a2d;color:#e5ccd5;border-color:#181718}
 html[data-theme='dark'] .theme-toggle .theme-switch{background:#4a4547}

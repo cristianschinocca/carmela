@@ -5,7 +5,7 @@ Este documento describe la demostración actual. La arquitectura futura con API,
 - `src/App.tsx`: composición de pantallas, estado compartido y navegación de la demostración.
 - `src/features/shell/`: navegación y estructura visible en todas las pantallas internas.
 - `src/features/dashboard/`, `menu/`, `settings/`: pantallas administrativas con sus propias dependencias y props explícitas.
-- `src/components/`: módulos funcionales existentes (POS, productos, equipo, caja, menú público). Se mantienen sus contratos para evitar regresiones.
+- `src/components/`: componentes agrupados por sección: `pos`, `stock`, `products`, `team`, `attendance`, `cash`, `menu`, `reports` y `auth`. `shared` contiene elementos reutilizados y `ui` los componentes shadcn/ui.
 - `src/pos/` y `src/stock/`: lógica y componentes específicos de esos dominios.
 - `src/stores/`: modelos compartidos, persistencia local y datos de demostración. `workspace.ts` conserva las claves existentes de `localStorage` y `sessionStorage`.
 - `src/config/`: datos fijos del negocio; `src/motion.tsx`: lenguaje de movimiento compartido.

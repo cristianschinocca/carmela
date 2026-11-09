@@ -5,7 +5,7 @@ import {
   Clock3,
   X,
 } from "lucide-react";
-import { modalVariants, overlayVariants, press } from "../motion";
+import { modalVariants, overlayVariants, press } from "../../motion";
 import {
   CLOCK_STORAGE,
   TEAM_STORAGE,
@@ -14,7 +14,7 @@ import {
   timeNow,
   type ClockEntry,
   type TeamMember,
-} from "../stores/team";
+} from "../../stores/team";
 
 export function AttendanceManager() {
   const [team, setTeam] = useState<TeamMember[]>(loadTeamMembers);

@@ -41,19 +41,16 @@ Resumen, POS interactivo, catálogo, pedidos, caja, menú digital, reportes, equ
 
 - `src/main.tsx`: punto de entrada; monta React y los proveedores globales.
 - `src/App.tsx`: estado y navegación del dashboard de gestión.
-- `src/components/TablePOS.tsx`: interacción de mesas, comandas y cobros.
-- `src/components/PosCatalog.tsx`: búsqueda, categorías, colores y ubicación de productos del POS.
-- `src/components/PosAccountTicket.tsx`: artículos, acciones y totales de la cuenta.
-- `src/components/PosPaymentDialog.tsx`: elección del medio de pago y confirmación del cobro.
-- `src/components/pos-dialogs/`: modales de empleado, cubiertos, código y edición de mesa.
+- `src/components/pos/`: interfaz de mesas, comandas, cobros y sus modales.
+- `src/components/stock/`: inventario de productos, alertas y carga rápida.
+- `src/components/products/`, `team/`, `attendance/`, `cash/`, `menu/`, `reports/` y `auth/`: componentes por sección.
+- `src/components/shared/` y `src/components/ui/`: elementos compartidos y componentes shadcn/ui.
 - `src/pos/floorModel.ts`: tipos, distribución, límites y carga de mesas y sectores.
 - `src/pos/catalogLayout.ts`: colores y reglas de ordenamiento en la grilla del POS.
 - `src/pos/table-pos.css`: estilos del modal de cuenta y del catálogo del POS.
-- `src/components/PublicMenu.tsx`: experiencia pública del menú digital, aislada del dashboard.
+- `src/components/menu/PublicMenu.tsx`: experiencia pública del menú digital, aislada del dashboard.
 - `src/hooks/useDashboardTheme.ts`: persistencia del tema del dashboard y separación del tema público.
-- `src/components/Operations.tsx`: métricas y tabla de pedidos compartidas.
-- `src/components/ProductManager.tsx`: catálogo, editor, ordenamiento y categorías.
-- `src/components/TeamManager.tsx`: usuarios, roles, códigos e historial de fichajes.
+- `src/pos/README.md`: responsabilidades y organización de la lógica del punto de venta.
 - `src/data.ts`: datos y fotografías de demostración.
 - `src/motion.tsx`: tokens, variantes, proveedor y componentes animados compartidos.
 - `src/styles/`: estilos generales y por área, importados en orden desde `src/main.tsx`.

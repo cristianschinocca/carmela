@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { X } from "lucide-react";
-import { fadeUp, overlayVariants } from "../../motion";
-import type { Area, Sector, Table } from "../../pos/floorModel";
+import { fadeUp, overlayVariants } from "../../../motion";
+import type { Area, Sector, Table } from "../../../pos/floorModel";
 
 type Props = {
   table: Table;

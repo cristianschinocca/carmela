@@ -22,16 +22,16 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { money } from "../data";
-import { modalVariants, overlayVariants } from "../motion";
-import { resetCounterTableSequence } from "../stores/counterSequence";
+import { money } from "../../data";
+import { modalVariants, overlayVariants } from "../../motion";
+import { resetCounterTableSequence } from "../../stores/counterSequence";
 import {
   CASH_BASE_EXPECTED,
   CASH_SALES,
   OTHER_PAYMENTS,
   type CashExpense,
   type CashMovementKind,
-} from "../stores/cash";
+} from "../../stores/cash";
 
 const DENOMINATIONS = [10, 20, 50, 100, 200, 1000, 2000, 10000, 20000];
 

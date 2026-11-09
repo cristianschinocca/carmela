@@ -18,7 +18,7 @@ import {
   overlayVariants,
   press,
   staggerContainer,
-} from "../motion";
+} from "../../motion";
 import {
   TEAM_ROLES,
   TEAM_STORAGE,
@@ -29,9 +29,9 @@ import {
   type TeamPay,
   type TeamRole,
   type TeamWorkday,
-} from "../stores/team";
+} from "../../stores/team";
 
-export { loadTeamMembers, type TeamMember } from "../stores/team";
+export { loadTeamMembers, type TeamMember } from "../../stores/team";
 const initials = (name: string) =>
   name
     .split(" ")

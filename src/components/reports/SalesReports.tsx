@@ -12,11 +12,11 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import type { Product } from "../data";
-import { money } from "../data";
-import { fadeUp, press, staggerContainer } from "../motion";
-import { loadSales } from "../stores/sales";
-import { WeeklySalesChart } from "../features/dashboard/WeeklySalesChart";
+import type { Product } from "../../data";
+import { money } from "../../data";
+import { fadeUp, press, staggerContainer } from "../../motion";
+import { loadSales } from "../../stores/sales";
+import { WeeklySalesChart } from "../../features/dashboard/WeeklySalesChart";
 
 const monthFormatter = new Intl.DateTimeFormat("es-AR", {
   month: "long",

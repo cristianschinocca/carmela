@@ -11,9 +11,9 @@ import {
   Search,
   Utensils,
 } from "lucide-react";
-import type { Product } from "../data";
-import { money, photos } from "../data";
-import { business } from "../config/business";
+import type { Product } from "../../data";
+import { money, photos } from "../../data";
+import { business } from "../../config/business";
 import { BusinessMap } from "./BusinessMap";
 import {
   AnimatedImage,
@@ -22,7 +22,7 @@ import {
   press,
   staggerContainer,
   subtleHover,
-} from "../motion";
+} from "../../motion";
 
 type PublicMenuProps = {
   products: Product[];

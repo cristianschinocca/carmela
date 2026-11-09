@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Boxes, ChefHat, Package, Truck } from "lucide-react";
 import type { Product } from "../data";
-import { StockManager } from "../components/StockManager";
+import { StockManager } from "../components/stock/StockManager";
 import type { Stock } from "../stores/inventory";
 import { useStockCatalog } from "./useStockCatalog";
 import { Ingredients } from "./components/Ingredients";

@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { Minus, Plus, X } from "lucide-react";
-import { modalVariants, overlayVariants } from "../../motion";
-import type { TeamMember } from "../../stores/team";
+import { modalVariants, overlayVariants } from "../../../motion";
+import type { TeamMember } from "../../../stores/team";
 
 type Props = {
   tableName: string;

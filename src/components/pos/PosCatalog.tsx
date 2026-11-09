@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { Check, Eraser, GripVertical, Palette, Plus, Search, X } from "lucide-react";
-import type { Product } from "../data";
-import { catalogPalette, catalogColorStyle, catalogCellFromCoordinates, catalogClosestFreeCell, catalogDefaultCells, catalogGridPosition, PRODUCT_CARD_SIZE, PRODUCT_CELL, PRODUCT_GAP, type CatalogColors } from "../pos/catalogLayout";
+import type { Product } from "../../data";
+import { catalogPalette, catalogColorStyle, catalogCellFromCoordinates, catalogClosestFreeCell, catalogDefaultCells, catalogGridPosition, PRODUCT_CARD_SIZE, PRODUCT_CELL, PRODUCT_GAP, type CatalogColors } from "../../pos/catalogLayout";
 
 export default function PosCatalog({ products, categories, onAddProduct, categoryContainer }: { products: Product[]; categories: string[]; onAddProduct: (productId: number) => void; categoryContainer: HTMLElement | null }) {
   const addProduct = onAddProduct;

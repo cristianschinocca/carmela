@@ -2,9 +2,9 @@ import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Save, Search, X } from "lucide-react";
-import type { Product } from "../data";
-import { modalVariants, overlayVariants } from "../motion";
-import { saveStockCountBatch, type Stock } from "../stores/inventory";
+import type { Product } from "../../data";
+import { modalVariants, overlayVariants } from "../../motion";
+import { saveStockCountBatch, type Stock } from "../../stores/inventory";
 
 type Draft = Record<number, { quantity: string; minimum: string }>;
 type Props = {

@@ -1,8 +1,8 @@
 import { motion } from "motion/react";
 import { Check, KeyRound, X } from "lucide-react";
-import { modalVariants, overlayVariants } from "../../motion";
-import type { PinPurpose } from "../../pos/floorModel";
-import type { TeamMember } from "../../stores/team";
+import { modalVariants, overlayVariants } from "../../../motion";
+import type { PinPurpose } from "../../../pos/floorModel";
+import type { TeamMember } from "../../../stores/team";
 
 type Props = {
   operator: TeamMember;
@@ -38,11 +38,14 @@ export default function EmployeePinDialog({ operator, tableName, purpose, pin, e
         <h2 id="operator-pin-title">Código de {operator.name}</h2>
         <p>{description}</p>
         <form onSubmit={(event) => { event.preventDefault(); onConfirm(); }}>
-          <label className="field operator-pin-field">
-            Código de cuatro números
-            <input autoFocus aria-label={`Código de ${operator.name}`} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+          <label className="field operator-pin-field !text-center">
+            Código de cuatro dígitos
+            <span className="relative mx-auto block w-full max-w-[240px] rounded-xl focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[var(--brand)]">
+              <input className="!absolute !inset-0 !z-10 !h-full !w-full cursor-text !opacity-0" autoFocus aria-label={`Código de ${operator.name}`} aria-invalid={Boolean(error)} aria-describedby={error ? "employee-pin-error" : undefined} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+              <span className="grid grid-cols-4 gap-2" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <span key={index} className={`grid h-13 place-items-center rounded-xl border text-xl font-semibold ${error ? "border-red-400 text-red-400" : "border-[var(--border)] bg-[var(--surface)] text-[var(--text)]"}`}>{index < pin.length ? "●" : <span className="text-[var(--muted)] opacity-40">·</span>}</span>)}</span>
+            </span>
           </label>
-          {error && <motion.p className="operator-pin-error" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} role="alert">{error}</motion.p>}
+          {error && <motion.p id="employee-pin-error" className="operator-pin-error" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} role="alert">{error}</motion.p>}
           <div className="operator-pin-actions">
             <button type="button" className="button" onClick={onClose}>{backLabel}</button>
             <button className="button primary" disabled={pin.length !== 4}><Check size={16} /> {confirmLabel}</button>

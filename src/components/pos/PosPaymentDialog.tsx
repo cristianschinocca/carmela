@@ -1,8 +1,8 @@
 import { type RefObject } from "react";
 import { motion } from "motion/react";
 import { Banknote, CreditCard, Smartphone, X } from "lucide-react";
-import { money } from "../data";
-import { modalVariants, overlayVariants } from "../motion";
+import { money } from "../../data";
+import { modalVariants, overlayVariants } from "../../motion";
 
 export type PaymentMethod = "" | "Efectivo" | "Tarjeta" | "Transferencia";
 

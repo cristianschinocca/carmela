@@ -3,8 +3,8 @@ import { Coffee, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoginForm } from "@/features/auth/LoginForm";
-import { pageVariants } from "../motion";
-import type { TeamMember } from "../stores/team";
+import { pageVariants } from "../../motion";
+import type { TeamMember } from "../../stores/team";
 
 type LoginPageProps = {
   onLogin: (member: TeamMember) => void;

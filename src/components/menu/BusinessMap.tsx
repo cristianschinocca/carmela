@@ -1,5 +1,5 @@
 import { ExternalLink, MapPin } from "lucide-react";
-import { business } from "../config/business";
+import { business } from "../../config/business";
 
 export function BusinessMap() {
   return (

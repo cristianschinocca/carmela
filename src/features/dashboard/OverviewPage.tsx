@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { ArrowRight, ArrowUpRight, ChartNoAxesCombined, Coffee, ShoppingBag, Utensils, Wallet } from "lucide-react";
-import { Metric } from "../../components/Operations";
+import { Metric } from "../../components/shared/Operations";
 import { money, type Product } from "../../data";
 import { CASH_BASE_EXPECTED, CASH_SALES } from "../../stores/cash";
 import { transitions } from "../../motion";

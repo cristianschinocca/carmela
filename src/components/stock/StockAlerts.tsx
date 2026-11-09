@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Bell, TriangleAlert } from "lucide-react";
-import type { Product } from "../data";
-import type { Stock } from "../stores/inventory";
-import { fadeUp } from "../motion";
-import { recipeCapacity } from "../stock/domain";
-import { useStockCatalog } from "../stock/useStockCatalog";
+import type { Product } from "../../data";
+import type { Stock } from "../../stores/inventory";
+import { fadeUp } from "../../motion";
+import { recipeCapacity } from "../../stock/domain";
+import { useStockCatalog } from "../../stock/useStockCatalog";
 
 type Props = {
   products: Product[];

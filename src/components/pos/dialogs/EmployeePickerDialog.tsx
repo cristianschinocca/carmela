@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { UserRound, X } from "lucide-react";
-import { modalVariants, overlayVariants, press } from "../../motion";
-import type { TeamMember } from "../../stores/team";
+import { modalVariants, overlayVariants, press } from "../../../motion";
+import type { TeamMember } from "../../../stores/team";
 
 type Props = {
   tableName: string;
