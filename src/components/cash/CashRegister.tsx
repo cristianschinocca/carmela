@@ -12,23 +12,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   Banknote,
-  ArrowDownUp,
-  UsersRound,
-  Receipt,
   Check,
   LockKeyhole,
-  Plus,
-  ReceiptText,
-  Truck,
+  Trash2,
   X,
 } from "lucide-react";
 import { money } from "../../data";
+import { CashMovementGroups } from "./CashMovementGroups";
 import { modalVariants, overlayVariants } from "../../motion";
 import { resetCounterTableSequence } from "../../stores/counterSequence";
+import { loadTeamMembers, type TeamMember } from "../../stores/team";
 import {
+  cashMovementImpact,
   CASH_BASE_EXPECTED,
-  CASH_SALES,
-  OTHER_PAYMENTS,
   type CashExpense,
   type CashMovementKind,
 } from "../../stores/cash";
@@ -47,6 +43,19 @@ const emptyExpense = {
   payment: "Efectivo" as CashExpense["payment"],
   receipt: "",
 };
+
+const localDate = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+const emptyEmployeePayment = () => ({
+  employeeId: "",
+  type: "Sueldo" as "Sueldo" | "Adelanto" | "Otro",
+  periodStart: "",
+  periodEnd: "",
+  paidAt: localDate(),
+});
 
 const emptyCount = () =>
   Object.fromEntries(DENOMINATIONS.map((value) => [value, 0])) as Record<
@@ -83,6 +92,10 @@ export function CashRegister({
   const [closedTotal, setClosedTotal] = useState<number | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState(emptyExpense);
+  const [editingExpense, setEditingExpense] = useState<CashExpense | null>(null);
+  const [confirmVoid, setConfirmVoid] = useState(false);
+  const [employees, setEmployees] = useState<TeamMember[]>([]);
+  const [employeePayment, setEmployeePayment] = useState(emptyEmployeePayment);
 
   useEffect(() => {
     if (open && mode === "count" && closed) {
@@ -97,10 +110,8 @@ export function CashRegister({
     }
   }, [open, mode, closed]);
 
-  const totalExpenses = expenses.filter((expense) => expense.kind !== "ajuste").reduce((sum, expense) => sum + expense.amount, 0);
   const cashExpenses = expenses
-    .filter((expense) => expense.payment === "Efectivo")
-    .reduce((sum, expense) => sum + (expense.direction === "in" ? -expense.amount : expense.amount), 0);
+    .reduce((sum, expense) => sum - cashMovementImpact(expense), 0);
   const expectedCash = CASH_BASE_EXPECTED - cashExpenses;
 
   const countedTotal = useMemo(
@@ -150,83 +161,78 @@ export function CashRegister({
 
   const saveExpense = (event: FormEvent) => {
     event.preventDefault();
-    if (closed || ((expenseForm.kind === "proveedor" || expenseForm.kind === "empleado") && !expenseForm.supplier.trim()) || !expenseForm.concept.trim() || expenseForm.amount <= 0)
+    const employee = employees.find((member) => String(member.id) === employeePayment.employeeId);
+    const isEmployee = expenseForm.kind === "empleado";
+    if (closed || ((expenseForm.kind === "proveedor" || expenseForm.kind === "retiro") && !expenseForm.supplier.trim()) || (!isEmployee && !expenseForm.concept.trim()) || expenseForm.amount <= 0 || (isEmployee && (!employee || !employeePayment.periodStart || !employeePayment.periodEnd || !employeePayment.paidAt || employeePayment.periodStart > employeePayment.periodEnd)))
       return;
     const expense: CashExpense = {
       ...expenseForm,
-      id: Date.now(),
-      supplier: expenseForm.supplier.trim() || (expenseForm.kind === "ajuste" ? "Ajuste de caja" : "Gasto vario"),
-      concept: expenseForm.concept.trim(),
+      id: editingExpense?.id ?? Date.now(),
+      supplier: employee && isEmployee ? employee.name : expenseForm.supplier.trim() || (expenseForm.kind === "ajuste" ? "Ajuste de caja" : "Gasto vario"),
+      concept: isEmployee ? employeePayment.type : expenseForm.concept.trim(),
+      category: isEmployee ? "Personal" : expenseForm.category,
+      ...(isEmployee && employee ? { employeePayment: { ...employeePayment, employeeId: employee.id } } : {}),
       receipt: expenseForm.receipt.trim(),
-      time: new Date().toLocaleTimeString("es-AR", {
+      time: editingExpense?.time ?? new Date().toLocaleTimeString("es-AR", {
         hour: "2-digit",
         minute: "2-digit",
       }),
     };
-    setExpenses((current) => [...current, expense]);
+    setExpenses((current) => editingExpense
+      ? current.map((item) => item.id === editingExpense.id ? expense : item)
+      : [...current, expense]);
     setExpenseForm(emptyExpense);
     setExpenseOpen(false);
-    onToast(`Movimiento registrado por ${money(expense.amount)}.`);
+    setEditingExpense(null);
+    onToast(`Movimiento ${editingExpense ? "actualizado" : "registrado"} por ${money(expense.amount)}.`);
   };
 
 
   const startMovement = (kind: CashMovementKind) => {
+    setEditingExpense(null);
+    setConfirmVoid(false);
     setExpenseForm({ ...emptyExpense, kind });
+    if (kind === "empleado") {
+      setEmployees(loadTeamMembers());
+      setEmployeePayment(emptyEmployeePayment());
+    }
     setExpenseOpen(true);
+  };
+
+  const editMovement = (item: CashExpense) => {
+    if (closed || item.voidedAt) return;
+    setEditingExpense(item);
+    setConfirmVoid(false);
+    setExpenseForm({ ...item, kind: item.kind ?? "proveedor", direction: item.direction ?? "out" });
+    if (item.kind === "empleado") {
+      setEmployees(loadTeamMembers());
+      setEmployeePayment(item.employeePayment
+        ? { ...item.employeePayment, employeeId: String(item.employeePayment.employeeId) }
+        : emptyEmployeePayment());
+    }
+    setExpenseOpen(true);
+  };
+
+  const voidMovement = () => {
+    if (!editingExpense || closed) return;
+    setExpenses((current) => current.map((item) => item.id === editingExpense.id
+      ? { ...item, voidedAt: new Date().toISOString() }
+      : item));
+    setExpenseOpen(false);
+    setEditingExpense(null);
+    setConfirmVoid(false);
+    onToast("Movimiento anulado. El saldo de caja fue actualizado.");
   };
 
   return (
     <div className={`cash-main-backdrop ${open ? "is-open" : ""} ${mode === "count" ? "cash-count-only" : ""}`} aria-hidden={!open} inert={!open} onMouseDown={(event) => { if (event.target === event.currentTarget && !step && !expenseOpen) onClose(); }}>
       <section className="cash-main-modal" role="dialog" aria-modal="true" aria-labelledby="cash-modal-title">
-      <header className="cash-main-header"><div><span className="eyebrow">GESTIÓN DEL TURNO</span><h2 id="cash-modal-title">Movimientos de caja</h2><p>Consultá los gastos y el efectivo esperado del turno.</p></div><button ref={closeButtonRef} className="cash-main-close" aria-label="Cerrar caja" onClick={onClose}><X size={19} /></button></header>
-      <div className="cash-movement-summary"><span className={`cash-status ${closed ? "closed" : "open"}`}><i aria-hidden="true" />{closed ? "Caja cerrada" : "Caja abierta"}</span><span>Fondo inicial <strong>{money(CASH_BASE_EXPECTED - CASH_SALES)}</strong></span><span>Ventas del turno <strong>{money(CASH_SALES + OTHER_PAYMENTS)}</strong></span><span>Gastos <strong>{money(totalExpenses)}</strong></span></div>
-      <div className="cash-content-grid">
-      <section className="panel supplier-expenses">
-        <div className="panel-heading">
-          <div>
-            <h2 className="cash-section-title"><Truck size={17} aria-hidden="true" />Movimientos registrados</h2>
-            <p>Pagos y ajustes registrados durante el turno.</p>
-          </div>
-          {!closed && (
-            <button className="icon-btn" aria-label="Registrar gasto" onClick={() => startMovement("gasto")}>
-              <Plus size={17} />
-            </button>
-          )}
-        </div>
-        {expenses.length ? (
-          <div className="expense-list">
-            {expenses.map((expense) => (
-              <div className="expense-row" key={expense.id}>
-                <span className="expense-icon"><Truck size={16} /></span>
-                <div>
-                  <strong>{expense.supplier}</strong>
-                  <small>{expense.concept} · {expense.kind === "ajuste" ? "Ajuste de caja" : expense.kind === "empleado" ? "Pago a empleado" : expense.kind === "gasto" ? "Gasto vario" : "Pago a proveedor"}</small>
-                  <em>{expense.payment}{expense.receipt ? ` · ${expense.receipt}` : ""}</em>
-                </div>
-                <b>{expense.direction === "in" ? "+" : "−"} {money(expense.amount)}</b>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="expense-empty">
-            <Truck size={22} />
-            <strong>Sin movimientos registrados</strong>
-            <p>Los pagos y ajustes van a aparecer acá.</p>
-          </div>
-        )}
-        <div className="expense-total">
-          <span>Total de gastos</span>
-          <strong>{money(totalExpenses)}</strong>
-        </div>
-      </section>
+      <header className="cash-main-header"><div><span className="eyebrow">GESTIÓN DEL TURNO</span><h2 id="cash-modal-title">Movimientos de caja</h2><p>Entradas y salidas registradas durante el turno.</p></div><button ref={closeButtonRef} className="cash-main-close" aria-label="Cerrar caja" onClick={onClose}><X size={19} /></button></header>
+      <div className="cash-balance-overview flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+        <div><span className={`cash-status ${closed ? "closed" : "open"}`}><i aria-hidden="true" />{closed ? "Caja cerrada" : "Caja abierta"}</span><p className="mt-2 text-[11px] text-[var(--muted)]">El saldo se actualiza con los movimientos en efectivo.</p></div>
+        <div className="sm:text-right"><span className="block text-[11px] text-[var(--muted)]">{closed ? "Efectivo contado" : "Efectivo esperado en caja"}</span><strong className="mt-1 block text-[24px] leading-none tabular-nums">{money(closed ? closedTotal ?? 0 : expectedCash)}</strong></div>
       </div>
-      <div className="cash-movement-footer"><div><span>{closed ? "Efectivo contado" : "Efectivo esperado en caja"}</span><strong>{money(closed ? closedTotal || 0 : expectedCash)}</strong></div></div>
-      <div className="cash-movement-actions" aria-label="Registrar movimiento">
-        <button className="button" disabled={closed} onClick={() => startMovement("empleado")}><UsersRound size={16} /> Pago a empleado</button>
-        <button className="button" disabled={closed} onClick={() => startMovement("gasto")}><Receipt size={16} /> Gasto vario</button>
-        <button className="button" disabled={closed} onClick={() => startMovement("proveedor")}><Truck size={16} /> Pago a proveedor</button>
-        <button className="button" disabled={closed} onClick={() => startMovement("ajuste")}><ArrowDownUp size={16} /> Ajuste de caja</button>
-      </div>
+      <CashMovementGroups expenses={expenses} closed={closed} onAdd={startMovement} onEdit={editMovement} />
 
       <AnimatePresence mode="wait">
         {step && (
@@ -420,36 +426,54 @@ export function CashRegister({
               </button>
               <header className="cash-modal-heading">
                 <span className="eyebrow">MOVIMIENTO DE CAJA</span>
-                <h2 id="expense-modal-title">{expenseForm.kind === "empleado" ? "Pago a empleado" : expenseForm.kind === "proveedor" ? "Pago a proveedor" : expenseForm.kind === "ajuste" ? "Ajuste de caja" : "Gasto vario"}</h2>
-                <p>Registrá el movimiento del turno.</p>
+                <h2 id="expense-modal-title">{editingExpense ? "Editar " : ""}{expenseForm.kind === "empleado" ? "pago a empleado" : expenseForm.kind === "proveedor" ? "pago a proveedor" : expenseForm.kind === "ajuste" ? "ajuste de caja" : expenseForm.kind === "retiro" ? "retiro de efectivo" : "gasto vario"}</h2>
+                <p>{editingExpense ? "Corregí los datos o anulá este movimiento." : expenseForm.kind === "empleado" ? "Registrá el pago y el período correspondiente." : "Registrá el movimiento del turno."}</p>
               </header>
               <form className="expense-form" onSubmit={saveExpense}>
-                {(expenseForm.kind === "proveedor" || expenseForm.kind === "empleado") && <label className="field">
-                  {expenseForm.kind === "empleado" ? "Empleado" : "Proveedor"}
+                {expenseForm.kind === "empleado" && <>
+                  <label className="field">Empleado
+                    <select aria-label="Empleado" autoFocus required value={employeePayment.employeeId} onChange={(event) => setEmployeePayment({ ...employeePayment, employeeId: event.target.value })}>
+                      <option value="">Elegí un empleado</option>
+                      {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}{employee.active ? "" : " · Inactivo"}</option>)}
+                    </select>
+                    {!employees.length && <small>No hay empleados cargados en Equipo.</small>}
+                  </label>
+                  <div className="field-row expense-field-row">
+                    <label className="field">Tipo de pago<select value={employeePayment.type} onChange={(event) => setEmployeePayment({ ...employeePayment, type: event.target.value as typeof employeePayment.type })}><option>Sueldo</option><option>Adelanto</option><option>Otro</option></select></label>
+                    <label className="field">Fecha de pago<input type="date" required value={employeePayment.paidAt} onChange={(event) => setEmployeePayment({ ...employeePayment, paidAt: event.target.value })} /></label>
+                  </div>
+                  <div className="field-row expense-field-row">
+                    <label className="field">Período desde<input type="date" required max={employeePayment.periodEnd || undefined} value={employeePayment.periodStart} onChange={(event) => setEmployeePayment({ ...employeePayment, periodStart: event.target.value })} /></label>
+                    <label className="field">Período hasta<input type="date" required min={employeePayment.periodStart || undefined} value={employeePayment.periodEnd} onChange={(event) => setEmployeePayment({ ...employeePayment, periodEnd: event.target.value })} /></label>
+                  </div>
+                </>}
+                {expenseForm.kind === "proveedor" && <label className="field">
+                  Proveedor
                   <input
                     autoFocus
                     required
-                    placeholder={expenseForm.kind === "empleado" ? "Nombre del empleado" : "Nombre del proveedor"}
+                    placeholder="Nombre del proveedor"
                     value={expenseForm.supplier}
                     onChange={(event) =>
                       setExpenseForm({ ...expenseForm, supplier: event.target.value })
                     }
                   />
                 </label>}
-                <label className="field">
+                {expenseForm.kind === "retiro" && <label className="field">Destino<select required value={expenseForm.supplier} onChange={(event) => setExpenseForm({ ...expenseForm, supplier: event.target.value })}><option value="">Elegí un destino</option><option>Caja mayor</option><option>Banco</option><option>Otro</option></select></label>}
+                {expenseForm.kind !== "empleado" && <label className="field">
                   Concepto
                   <input
                     required
-                    placeholder="Ej.: Compra de café en grano"
+                    placeholder={expenseForm.kind === "retiro" ? "Ej.: Retiro para depósito" : "Ej.: Compra de café en grano"}
                     value={expenseForm.concept}
                     onChange={(event) =>
                       setExpenseForm({ ...expenseForm, concept: event.target.value })
                     }
                   />
-                </label>
+                </label>}
                 {expenseForm.kind === "ajuste" && <label className="field">Tipo de ajuste<select value={expenseForm.direction} onChange={(event) => setExpenseForm({ ...expenseForm, direction: event.target.value as "in" | "out" })}><option value="in">Ingreso de efectivo</option><option value="out">Salida de efectivo</option></select></label>}
                 <div className="field-row expense-field-row">
-                  <label className="field">
+                  {expenseForm.kind !== "retiro" && expenseForm.kind !== "ajuste" && expenseForm.kind !== "empleado" && <label className="field">
                     Categoría
                     <select
                       value={expenseForm.category}
@@ -463,7 +487,7 @@ export function CashRegister({
                       <option>Mantenimiento</option>
                       <option>Otros</option>
                     </select>
-                  </label>
+                  </label>}
                   <label className="field">
                     Importe
                     <input
@@ -486,7 +510,7 @@ export function CashRegister({
                   <label className="field">
                     Medio de pago
                     <select
-                      disabled={expenseForm.kind === "ajuste"}
+                      disabled={expenseForm.kind === "ajuste" || expenseForm.kind === "retiro"}
                       value={expenseForm.payment}
                       onChange={(event) =>
                         setExpenseForm({
@@ -519,14 +543,18 @@ export function CashRegister({
                       : "Quedará registrado sin modificar el efectivo físico de la caja."}
                   </span>
                 </div>
-                <div className="cash-modal-actions">
-                  <button type="button" className="button" onClick={() => setExpenseOpen(false)}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="button primary">
-                    <Check size={16} /> Registrar movimiento
-                  </button>
-                </div>
+                {confirmVoid ? <div className="mt-4 rounded-xl border border-[var(--border)] p-4" role="alert">
+                  <p className="text-sm font-semibold">¿Anular este movimiento?</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Se conservará marcado como anulado y dejará de afectar el saldo de caja.</p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" className="button" onClick={() => setConfirmVoid(false)}>Volver</button>
+                    <button type="button" className="button" onClick={voidMovement}><Trash2 size={15} /> Confirmar anulación</button>
+                  </div>
+                </div> : <div className="cash-modal-actions">
+                  {editingExpense && <button type="button" className="button mr-auto" onClick={() => setConfirmVoid(true)}><Trash2 size={15} /> Anular</button>}
+                  <button type="button" className="button" onClick={() => setExpenseOpen(false)}>Cancelar</button>
+                  <button type="submit" className="button primary"><Check size={16} /> {editingExpense ? "Guardar cambios" : "Registrar movimiento"}</button>
+                </div>}
               </form>
             </motion.section>
           </motion.div>

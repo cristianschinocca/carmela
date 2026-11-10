@@ -26,7 +26,7 @@ import { TeamManager } from "./components/team/TeamManager";
 import { AttendanceManager } from "./components/attendance/AttendanceManager";
 import { SalesReports } from "./components/reports/SalesReports";
 import { CashRegister } from "./components/cash/CashRegister";
-import type { CashExpense } from "./stores/cash";
+import { cashMovementImpact, isCashExpense, type CashExpense } from "./stores/cash";
 import { PublicMenu } from "./components/menu/PublicMenu";
 import { LoginPage } from "./components/auth/LoginPage";
 import { type TeamMember } from "./stores/team";
@@ -83,13 +83,12 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(CASH_EXPENSE_STORAGE, JSON.stringify(cashExpenses));
   }, [cashExpenses]);
-  const cashExpenseTotal = cashExpenses.filter((expense) => expense.kind !== "ajuste").reduce(
+  const cashExpenseTotal = cashExpenses.filter(isCashExpense).reduce(
     (sum, expense) => sum + expense.amount,
     0,
   );
   const cashPaidExpenses = cashExpenses
-    .filter((expense) => expense.payment === "Efectivo")
-    .reduce((sum, expense) => sum + (expense.direction === "in" ? -expense.amount : expense.amount), 0);
+    .reduce((sum, expense) => sum - cashMovementImpact(expense), 0);
   useEffect(() => {
     const syncPublicView = () => {
       const nextPublicView = location.hash === "#menu";
