@@ -41,7 +41,7 @@ export function StockModal({ title, description, icon: Icon = Boxes, children, o
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }} className="relative max-h-[calc(100dvh-32px)] w-full max-w-xl overflow-y-auto rounded-[20px] border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text)] shadow-2xl sm:p-7">
       <button type="button" aria-label="Cerrar" onClick={onClose} className="absolute right-5 top-5 rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--brand-soft)]"><X size={18} /></button>
-      <div className="mb-6 flex items-start gap-3 pr-10"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-deep)]"><Icon size={19} aria-hidden="true" /></span><div><span className="eyebrow">GESTIÓN DE STOCK</span><h2 id="stock-editor-title" className="mt-1 text-xl">{title}</h2>{description && <p className="mt-1 text-xs">{description}</p>}</div></div>
+      <div className="mb-6 flex items-start gap-3 pr-10"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--brand-soft)] text-[var(--brand-deep)]"><Icon size={19} aria-hidden="true" /></span><div><h2 id="stock-editor-title" className="mt-1 text-xl">{title}</h2>{description && <p className="mt-1 text-xs">{description}</p>}</div></div>
       {children}
     </section>
   </div>, document.body);

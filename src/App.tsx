@@ -274,30 +274,26 @@ export function App() {
                   >
                     {page !== "Punto de venta" && <div className="page-heading">
                       <div>
-                        <span className="eyebrow">
-                          {page === "Resumen"
-                            ? "VIERNES, 23 DE OCTUBRE DE 2026"
-                            : "CARMELA · TU OPERACIÓN"}
-                        </span>
-                        <h1>
-                          {page === "Resumen"
-                            ? "Un buen día empieza acá."
-                            : page}
-                        </h1>
+                        {!["Resumen", "Productos", "Stock", "Fichaje", "Menú digital", "Reportes", "Equipo"].includes(page) && <span className="eyebrow">CARMELA · TU OPERACIÓN</span>}
+                        <h1>{page}</h1>
                         <p>
                           {page === "Resumen"
-                            ? "Tu café en movimiento. Todo lo importante, de un vistazo."
-                            : page === "Punto de venta"
-                              ? "Mesas, consumos, descuentos y cobros en un solo lugar."
-                              : page === "Menú digital"
-                                ? "La experiencia de tu café empieza antes del primer sorbo."
-                                : page === "Equipo"
-                                  ? "Personas, roles y accesos del equipo."
-                                  : page === "Fichaje"
-                                    ? "Entradas, salidas y personal en turno, siempre a mano."
-                                    : page === "Reportes"
-                                      ? "Qué se vende, cuántas personas vienen y cuánto factura el café."
-                                  : "Todo en su lugar, para que puedas enfocarte en tu café."}
+                            ? "Ventas, mesas y caja."
+                            : page === "Productos"
+                              ? "Catálogo de productos y categorías."
+                              : page === "Stock"
+                                ? "Productos, insumos, recetas y proveedores."
+                                : page === "Punto de venta"
+                                  ? "Mesas, consumos, descuentos y cobros en un solo lugar."
+                                  : page === "Menú digital"
+                                    ? "Vista previa y contenido del menú público."
+                                    : page === "Equipo"
+                                      ? "Personas, roles y accesos del equipo."
+                                      : page === "Fichaje"
+                                        ? "Entradas, salidas y personal en turno."
+                                        : page === "Reportes"
+                                          ? "Ventas, cubiertos y productos por mes."
+                                          : "Todo en su lugar, para que puedas enfocarte en tu café."}
                         </p>
                       </div>
                       <div className="heading-actions">

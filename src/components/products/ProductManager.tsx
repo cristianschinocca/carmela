@@ -241,7 +241,7 @@ export function ProductManager({
                 <span
                   className={"badge " + (product.available ? "ready" : "done")}
                 >
-                  {product.available ? "Disponible" : "Oculto"}
+                  {product.available ? "Disponible" : "No disponible"}
                 </span>
                 <div className="product-online-control">
                   <span>{product.onlineVisible === false ? "Oculto" : "Online"}</span>
@@ -336,11 +336,10 @@ export function ProductManager({
                 <X size={20} />
               </button>
               <div className="editor-heading">
-                <span className="eyebrow">CATÁLOGO</span>
                 <h2 id="product-editor-title">
                   {editing.id ? "Editar producto" : "Nuevo producto"}
                 </h2>
-                <p>Esta información se mostrará también en el menú público.</p>
+                <p>Configurá los datos del producto.</p>
               </div>
               <form className="product-form" onSubmit={submit}>
                 <label className="field">
@@ -424,7 +423,7 @@ export function ProductManager({
                   />
                   <span>
                     <strong>Disponible para la venta</strong>
-                    <small>Disponible para cargar en el POS.</small>
+                    <small>Permite cargar el producto en el punto de venta.</small>
                   </span>
                 </label>
                 <label className="availability-control">
@@ -440,7 +439,7 @@ export function ProductManager({
                   />
                   <span>
                     <strong>Visible en el menú digital</strong>
-                    <small>También podés cambiarlo directamente desde la lista.</small>
+                    <small>Se muestra en el menú cuando está disponible para la venta.</small>
                   </span>
                 </label>
                 <div className="form-actions">
@@ -570,9 +569,8 @@ function CategoryManager({
           <X size={20} />
         </button>
         <div className="editor-heading">
-          <span className="eyebrow">ORGANIZACIÓN</span>
           <h2 id="category-title">Categorías</h2>
-          <p>Creá y ordená la estructura que usan el POS y el menú.</p>
+          <p>Creá y ordená las categorías del catálogo.</p>
         </div>
         <form className="new-category" onSubmit={add}>
           <input

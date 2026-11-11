@@ -107,8 +107,7 @@ export function SalesReports({ products }: { products: Product[] }) {
     <div className="grid gap-[18px]">
       <div className="flex items-center justify-between gap-[18px] max-[760px]:flex-col max-[760px]:items-start">
         <div>
-          <span className="eyebrow">LECTURA DEL NEGOCIO</span>
-          <p className="!mt-[5px] !text-[11px]">Ventas, cubiertos y productos para entender cómo se mueve Carmela.</p>
+          <p className="!text-[11px]">Seleccioná un mes para consultar los datos.</p>
         </div>
         <div className="flex items-center gap-2 rounded-[11px] border border-[var(--border)] bg-[var(--surface)] p-1 max-[760px]:self-stretch max-[760px]:justify-between" aria-label="Período del reporte">
           <motion.button className="!grid size-[30px] place-items-center rounded-lg !text-[var(--muted)] hover:!bg-[var(--brand-wash)] hover:!text-[var(--brand)]" whileTap={press} aria-label="Mes anterior" onClick={() => moveMonth(-1)}>
@@ -149,27 +148,27 @@ export function SalesReports({ products }: { products: Product[] }) {
         </section>
 
         <section className="panel min-w-0">
-          <div className="panel-heading !mb-[18px]"><div><h2>Lo que más se vende</h2><p>Productos ordenados por unidades.</p></div><ArrowUpRight size={17} className="text-[#4d9a69]" /></div>
+          <div className="panel-heading !mb-[18px]"><div><h2>Productos más vendidos</h2><p>Ordenados por unidades.</p></div><ArrowUpRight size={17} className="text-[#4d9a69]" /></div>
           {topProducts.length ? topProducts.map((product, index) => (
             <div className={performanceClass} key={product.name}>
               <span className="grid size-[25px] place-items-center rounded-lg bg-[var(--brand-wash)] text-[9px] font-bold text-[var(--brand-deep)]">{index + 1}</span>
               <div className="min-w-0"><strong className="block truncate text-[10px] font-semibold">{product.name}</strong><small className="mt-1 block truncate text-[8px] text-[var(--muted)]">{product.category} · {money(product.revenue)} vendidos</small></div>
               <b className="text-[10px] font-semibold whitespace-nowrap">{integerFormatter.format(product.quantity)} <small className="text-[8px] font-normal text-[var(--muted)]">un.</small></b>
             </div>
-          )) : <ReportEmpty icon={<Coffee size={22} />} title="Todavía no hay productos vendidos" copy="Acá vas a ver cuáles son los favoritos del mes." />}
+          )) : <ReportEmpty icon={<Coffee size={22} />} title="Sin productos vendidos" copy="Los productos aparecerán al cerrar ventas." />}
         </section>
 
         <section className="panel min-w-0">
-          <div className="panel-heading !mb-[18px]"><div><h2>Sin ventas este mes</h2><p>Productos activos que todavía no salieron.</p></div><ArrowDownRight size={17} className="text-[var(--muted)]" /></div>
+          <div className="panel-heading !mb-[18px]"><div><h2>Sin ventas este mes</h2><p>Productos disponibles sin ventas en el mes.</p></div><ArrowDownRight size={17} className="text-[var(--muted)]" /></div>
           {selectedSales.length === 0 ? (
-            <ReportEmpty icon={<Package size={22} />} title="Esperando las primeras ventas" copy="Cuando haya movimientos del mes, vas a poder ver qué productos quedaron sin vender." />
+            <ReportEmpty icon={<Package size={22} />} title="Sin ventas registradas" copy="Al cerrar ventas, podrás ver qué productos quedaron sin vender." />
           ) : noSalesProducts.length ? noSalesProducts.map((product) => (
             <div className={performanceClass} key={product.id}>
               <span className="size-2 justify-self-center rounded-full border-2 border-[#c8bfc2]" />
               <div className="min-w-0"><strong className="block truncate text-[10px] font-semibold">{product.name}</strong><small className="mt-1 block truncate text-[8px] text-[var(--muted)]">{product.category}</small></div>
               <b className="text-[8px] font-[450] whitespace-nowrap text-[var(--muted)]">Sin ventas</b>
             </div>
-          )) : <ReportEmpty icon={<Package size={22} />} title="Todos tuvieron movimiento" copy="Cada producto del catálogo registró ventas este mes." />}
+          )) : <ReportEmpty icon={<Package size={22} />} title="Sin productos pendientes" copy="Todos los productos disponibles registraron ventas este mes." />}
         </section>
 
         <section className="panel min-w-0">

@@ -214,7 +214,7 @@ export function TeamManager() {
           {!visible.length && (
             <div className="empty">
               <Users size={28} />
-              <h3>No encontramos personas</h3>
+              <h3>Sin resultados</h3>
               <p>Probá con otro nombre o rol.</p>
             </div>
           )}
@@ -304,7 +304,6 @@ function MemberEditor({
           <X size={20} />
         </button>
         <div className="editor-heading !shrink-0 !px-[30px] !pt-7 !pb-1 max-[760px]:!px-5 max-[760px]:!pt-6">
-          <span className="eyebrow">EQUIPO</span>
           <h2 id="member-title">
             {draft.id ? "Editar empleado" : "Nuevo empleado"}
           </h2>
@@ -457,7 +456,6 @@ function TeamSetupDialog({ mode, pay, onCancel, onApply }: {
     <motion.section className={`${modalClass} team-setup-modal ${mode === "schedule" ? "!h-[min(690px,calc(100dvh-32px))]" : "!h-[min(420px,calc(100dvh-32px))]"}`} variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="team-setup-title">
       <button type="button" className="icon-btn close-modal" aria-label="Volver al empleado" onClick={onCancel}><X size={20} /></button>
       <div className="editor-heading !shrink-0 !px-[30px] !pt-7 !pb-[18px] max-[760px]:!px-5 max-[760px]:!pt-6 max-[760px]:!pb-[15px]">
-        <span className="eyebrow">EQUIPO</span>
         <h2 id="team-setup-title">{mode === "schedule" ? "Jornada semanal" : "Tarifa de pago"}</h2>
         <p>{mode === "schedule" ? "Elegí los días y definí el horario de cada uno." : "Configurá cuánto cobra el empleado."}</p>
       </div>

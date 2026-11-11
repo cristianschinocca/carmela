@@ -60,12 +60,11 @@ export function AttendanceManager() {
       <section className="panel !flex min-h-[315px] !flex-col items-start !rounded-[18px] !p-[30px] ![background:linear-gradient(145deg,var(--brand-soft),var(--surface)_60%)] max-[900px]:min-h-0 max-[900px]:gap-[18px] max-[900px]:!p-6">
         <span className="grid size-12 place-items-center rounded-[13px] bg-[var(--brand-soft)] text-[var(--brand)]"><Clock3 size={23} /></span>
         <div className="mt-[22px] max-[900px]:mt-0">
-          <span className="eyebrow">CONTROL DE TURNO</span>
-          <h2 className="!my-2 !text-[23px] !leading-[1.2] max-[760px]:!text-xl">Marcá tu entrada o salida</h2>
-          <p className="max-w-[340px] !text-[11px] !text-[var(--muted)]">Usá tu PIN personal de cuatro números. El fichador registra el movimiento según tu turno.</p>
+          <h2 className="!my-2 !text-[23px] !leading-[1.2] max-[760px]:!text-xl">Registrar entrada o salida</h2>
+          <p className="max-w-[340px] !text-[11px] !text-[var(--muted)]">Ingresá tu PIN de cuatro números para registrar tu entrada o salida.</p>
         </div>
         <motion.button whileTap={press} className="button primary !mt-auto min-w-[180px] !px-4 !py-3 max-[900px]:!mt-0 max-[760px]:w-full max-[760px]:justify-center" onClick={() => setShowClock(true)}>
-          <Clock3 size={17} /> Abrir fichador
+          <Clock3 size={17} /> Abrir fichaje
         </motion.button>
       </section>
 
@@ -149,7 +148,6 @@ function ClockModal({
         {result ? (
           <div className="!px-0 !pt-3.5 !pb-0.5 text-center">
             <span className="mx-auto mb-[17px] grid size-[60px] place-items-center rounded-full bg-[#edf4e8] text-[#668459]"><Check size={28} /></span>
-            <span className="eyebrow">FICHAJE REGISTRADO</span>
             <h2 id="clock-title" className="!my-2 !text-[23px]">{result.type} · {result.time}</h2>
             <p className="!mb-[23px]">{result.name}, tu movimiento quedó guardado en este dispositivo.</p>
             <button className="button primary full" onClick={onClose}>Listo</button>
@@ -158,7 +156,6 @@ function ClockModal({
           <>
             <div className="!p-0 text-center">
               <span className="round-icon !mx-auto !mb-[9px] !size-[38px]"><Clock3 size={21} /></span>
-              <span className="eyebrow">FICHAJE</span>
               <h2 id="clock-title" className="!mt-[5px] !mb-[3px] !text-xl">Ingresá tu PIN</h2>
               <p className="!text-[10px]">Cuatro números para registrar tu turno.</p>
             </div>

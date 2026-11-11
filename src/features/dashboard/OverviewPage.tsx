@@ -57,8 +57,8 @@ export function OverviewPage({
         <section className="panel sales-panel">
           <div className="panel-heading">
             <div>
-              <h2>El pulso de tus ventas</h2>
-              <p>Un buen café nunca pasa desapercibido.</p>
+              <h2>Ventas por hora</h2>
+              <p>Distribución de las ventas durante el día.</p>
             </div>
             <span className="flex items-center gap-[7px] text-[10px] text-[var(--muted)]">
               <i className="h-[7px] w-[7px] rounded-[3px] bg-[var(--brand)]" /> {period}
@@ -106,8 +106,7 @@ export function OverviewPage({
           </div>
           <div className="mt-[21px] flex items-center justify-between gap-2 border-t border-[var(--border)] pt-[15px] text-[9px] text-[var(--muted)] max-[1200px]:text-[8px]">
             <span>
-              <span className="spark">↗</span> Tu mejor hora
-              fue a las <strong className="font-medium text-[var(--text)]">12:00</strong>
+              <span className="spark">↗</span> Hora con más ventas: <strong className="font-medium text-[var(--text)]">12:00</strong>
             </span>
             <button
               className="text-btn"
@@ -121,7 +120,7 @@ export function OverviewPage({
           <div className="panel-heading !mb-5 !items-start">
             <div>
               <h2>Caja del turno</h2>
-              <p>Un resumen antes de hacer el arqueo.</p>
+              <p>Resumen del efectivo del turno.</p>
             </div>
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#edf7ef] px-[9px] py-1.5 text-[10px] font-semibold text-[#347a4c] in-data-[theme=dark]:bg-[#1d3024] in-data-[theme=dark]:text-[#9bd6aa]"><i className="h-1.5 w-1.5 rounded-full bg-[#49a86b]" aria-hidden="true" /> Abierta</span>
           </div>
@@ -129,7 +128,7 @@ export function OverviewPage({
             <div className="min-w-0">
               <span className="block text-[11px] text-[var(--muted)]">Efectivo esperado en caja</span>
               <strong className="mt-2.5 block text-[32px] leading-[1.1] font-semibold tracking-[-1.1px] text-[var(--text)] tabular-nums max-[760px]:text-[28px]">{money(CASH_BASE_EXPECTED - cashPaidExpenses)}</strong>
-              <p className="mt-2.5 !text-[10px] !leading-[1.5] !text-[var(--muted)]">Fondo inicial + ventas en efectivo − gastos en efectivo.</p>
+              <p className="mt-2.5 !text-[10px] !leading-[1.5] !text-[var(--muted)]">Fondo inicial + entradas − salidas en efectivo.</p>
             </div>
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] bg-[var(--brand-soft)] text-[var(--brand)]" aria-hidden="true"><Wallet size={20} /></span>
           </div>
@@ -187,8 +186,8 @@ export function OverviewPage({
         <section className="panel">
           <div className="panel-heading !mb-3.5">
             <div>
-              <h2>Los favoritos de hoy</h2>
-              <p>Los que siempre vuelven a pedir.</p>
+              <h2>Productos vendidos</h2>
+              <p>Unidades e importe por producto.</p>
             </div>
             <span className="round-icon">
               <Coffee size={19} />
@@ -210,18 +209,12 @@ export function OverviewPage({
             className="text-btn !mt-5"
             onClick={() => go("Productos")}
           >
-            Explorar productos <ArrowRight size={15} />
+            Ver productos <ArrowRight size={15} />
           </button>
         </section>
       </div>
-      <div className="mt-6 flex items-center justify-between gap-4 text-[9px] text-[var(--muted)] max-[760px]:text-[8px]">
-        <span className="flex items-center gap-[7px]">
-          <span className="text-[var(--brand)]">m</span> Menos gestión.
-          Más café.
-        </span>
-        <span>
-          Los datos de esta vista son de demostración.
-        </span>
+      <div className="mt-6 text-right text-[9px] text-[var(--muted)] max-[760px]:text-[8px]">
+        Los datos de esta vista son de demostración.
       </div>
     </>
   );
