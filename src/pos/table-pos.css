@@ -162,6 +162,7 @@ html[data-theme='dark'] .account-dialog-scrim .product-position-canvas>button{ba
 
 /* Compact add-tables popover keeps the floor plan in place. */
 .table-add-anchor{position:relative}
+#floor-plan-tools .table-add-anchor .table-add-panel{left:0;right:auto}
 .table-add-anchor .table-add-panel{position:absolute;z-index:40;top:calc(100% + 8px);right:0;width:min(320px,calc(100vw - 32px));display:grid;grid-template-columns:1fr 90px;align-items:end;gap:12px;padding:16px;box-shadow:0 14px 38px #0003}
 .table-add-anchor .table-add-panel>div{grid-column:1 / -1;min-width:0}
 .table-add-anchor .table-add-panel label{min-width:0}

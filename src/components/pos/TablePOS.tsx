@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   Check,
+  ChevronDown,
   GripVertical,
   Grid2X2,
   LayoutGrid,
@@ -25,7 +26,7 @@ import { useFloorLayout } from "../../pos/useFloorLayout";
 import { useTableAccount } from "../../pos/useTableAccount";
 import { lineUnitPrice, makeCounterTable } from "../../pos/accountModel";
 import { money } from "../../data";
-import { fadeUp, press, transitions } from "../../motion";
+import { press, transitions } from "../../motion";
 import {
   loadTeamMembers,
   type TeamMember,
@@ -85,6 +86,7 @@ export default function TablePOS({
   const [exitPinError, setExitPinError] = useState("");
   const [pinPurpose, setPinPurpose] = useState<PinPurpose>("enter");
   const [layoutMode, setLayoutMode] = useState(false);
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [counterHovered, setCounterHovered] = useState(false);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [activeArea, setActiveArea] = useState<Area>("salon");
@@ -561,17 +563,40 @@ export default function TablePOS({
   };
   return (
     <div className="floor-manager">
-      <section className="panel !block !px-5 !py-[18px] max-[760px]:!p-4">
-        <div className="flex items-center justify-between gap-4 max-[760px]:flex-wrap max-[760px]:items-start">
+      <section className="panel !block !px-5 !py-3 max-[760px]:!px-4">
+        <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <span className="eyebrow">SECTORES</span>
-            <h2 className="!my-1 !text-[22px]">Plano de mesas</h2>
-            <p className="!text-[10px]">
+            <h2 className="!m-0 !text-[17px] max-[760px]:!text-[15px] max-[760px]:whitespace-nowrap">Plano de mesas</h2>
+            <p className="!mt-0.5 !text-[10px]">
               {tables.filter((table) => table.items.length).length} abiertas ·{" "}
               {tables.length} de {floorCapacity} lugares · {sectors.length} sectores
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-[760px]:w-full max-[760px]:justify-start">
+          <button
+            type="button"
+            className="button !min-h-9 !gap-2 !px-3 max-[760px]:!px-2"
+            aria-expanded={planMenuOpen}
+            aria-controls="floor-plan-tools"
+            onClick={() => {
+              setPlanMenuOpen((open) => !open);
+              setAddingTables(false);
+            }}
+          >
+            <span>{layoutMode ? "Editando plano" : "Opciones"}</span>
+            <ChevronDown size={16} className={`transition-transform duration-200 motion-reduce:transition-none ${planMenuOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
+        <AnimatePresence initial={false}>
+          {planMenuOpen && (
+            <motion.div
+              id="floor-plan-tools"
+              style={{ overflow: addingTables ? "visible" : "hidden" }}
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.2 }}
+            >
+          <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-[var(--border)] pt-3">
             <div className="table-add-anchor">
               <button className="button" aria-expanded={addingTables} onClick={() => addingTables ? setAddingTables(false) : openAddTables()}>
                 <Plus size={16} /> Agregar mesa
@@ -605,14 +630,14 @@ export default function TablePOS({
                 setConfirmDeleteTables(false);
                 setAddingTables(false);
                 setAddingSector(false);
+                if (layoutMode) setPlanMenuOpen(false);
               }}
             >
               <Grid2X2 size={16} />
               {layoutMode ? "Terminar edición" : "Editar plano"}
             </button>
           </div>
-        </div>
-        {layoutMode && <div className="mt-4 flex flex-wrap items-start gap-x-6 gap-y-3.5 border-t border-[var(--border)] pt-[15px] max-[760px]:gap-x-[18px]" role="group" aria-label="Herramientas de edición del plano">
+        {layoutMode && <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3.5 border-t border-[var(--border)] pt-3 max-[760px]:gap-x-[18px]" role="group" aria-label="Herramientas de edición del plano">
           <div className={floorEditGroupClassName}>
             <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Mesas</span>
             <button className={selectingTables ? "button !border-[var(--brand)] !bg-[var(--brand-soft)] !text-[var(--brand-deep)]" : "button"} aria-pressed={selectingTables} onClick={() => {
@@ -647,20 +672,11 @@ export default function TablePOS({
             )}
           </div>
         </div>}
+        {layoutMode && <p className="!mt-3 !text-[10px]">{selectingTables ? "Seleccioná las mesas que querés eliminar." : "Arrastrá las mesas o los sectores para acomodarlos. Cambiá el tamaño desde las esquinas."} Los cambios se guardan automáticamente.</p>}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
-      {layoutMode && (
-        <motion.div
-          className="flex justify-between gap-5 rounded-[11px] bg-[var(--brand-soft)] px-4 py-2.5 text-[10px] text-[var(--brand-deep)] max-[760px]:block max-[760px]:[&_strong]:mt-1 max-[760px]:[&_strong]:block"
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-        >
-          <span>
-            {selectingTables ? "Seleccioná las mesas que querés eliminar." : "Arrastrá las mesas o los sectores para acomodarlos. Cambiá el tamaño de cada sector desde sus esquinas."}
-          </span>
-          <strong>Los cambios se guardan automáticamente.</strong>
-        </motion.div>
-      )}
       {addingSector && <div className="panel sector-create"><label htmlFor="new-sector-name">Nombre del sector</label><input id="new-sector-name" autoFocus maxLength={32} value={sectorName} onChange={(event) => setSectorName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSector(); if (event.key === "Escape") setAddingSector(false); }} placeholder="Ej. Terraza" /><button className="button primary" onClick={createSector} disabled={!sectorName.trim()}>Crear sector</button><button className="button" onClick={() => setAddingSector(false)}>Cancelar</button></div>}
       {confirmDeleteTables && <div className="panel table-delete-panel" role="region" aria-labelledby="table-delete-title" aria-describedby="table-delete-description">
         <div><strong id="table-delete-title">Eliminar {selectedTableIds.length} {selectedTableIds.length === 1 ? "mesa" : "mesas"}</strong><p id="table-delete-description">{occupiedSelection.length ? `${occupiedSelection.length} ${occupiedSelection.length === 1 ? "tiene consumos o una cuenta solicitada. Cerrá esa mesa o sacala" : "tienen consumos o una cuenta solicitada. Cerrá esas mesas o sacalas"} de la selección para continuar.` : "Se quitarán del plano las mesas seleccionadas. Esta acción no se puede deshacer."}</p></div>
