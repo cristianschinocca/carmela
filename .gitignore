@@ -3,6 +3,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 artifacts/
+.playwright-mcp/
 .env
 .env.*
 !.env.example

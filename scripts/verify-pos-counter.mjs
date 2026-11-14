@@ -46,8 +46,10 @@ try {
   let counter = page.locator('[data-sector-id="counter"]');
   await counter.getByText('5/50 abiertas').waitFor();
   assert.deepEqual((await floor()).filter((table) => table.area === 'counter').map((table) => table.slot), [0, 1, 2, 3, 4]);
+  await page.getByRole('button', { name: 'Configurar plano de mesas' }).click();
   await page.getByRole('button', { name: 'Editar plano', exact: true }).click();
   assert.equal(await counter.locator('.floor-table').count(), 5);
+  await page.getByRole('button', { name: 'Configurar plano de mesas' }).click();
   await page.getByRole('button', { name: 'Terminar edición', exact: true }).click();
   await page.mouse.move(1, 1);
   await counter.hover();
@@ -142,8 +144,10 @@ try {
   await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press('Enter');
   assert.equal(await page.getByRole('dialog', { name: '¿Quién va a gestionar esta mesa?' }).count(), 0);
+  await page.getByRole('button', { name: 'Configurar plano de mesas' }).click();
   await page.getByRole('button', { name: 'Editar plano', exact: true }).click();
   assert.equal(await counter.locator('.floor-table').count(), 50);
+  await page.getByRole('button', { name: 'Configurar plano de mesas' }).click();
   await page.getByRole('button', { name: 'Terminar edición', exact: true }).click();
   await counter.getByRole('button', { name: 'Abrir Mesa 1, ocupada', exact: true }).click();
   let pin = page.getByRole('dialog', { name: 'Código de Camila López' });

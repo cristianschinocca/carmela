@@ -35,11 +35,11 @@ export const FREEFORM_MIN_HEIGHT = 220;
 export const SECTOR_GAP = 14;
 export const MAX_SECTOR_HEIGHT = 3000;
 export const TABLE_SLOT_LIMIT = 256;
-export const tableGridMetrics = (width: number) => {
+export const tableGridMetrics = (width: number, compact = false) => {
   const mobile = window.innerWidth <= 760;
-  const size = mobile ? 60 : 64;
-  const gap = mobile ? 9 : 11;
-  return { size, gap, columns: Math.max(1, Math.floor((Math.max(0, width - 4) + gap) / (size + gap))) };
+  const size = compact ? (mobile ? 46 : 50) : (mobile ? 60 : 64);
+  const gap = compact ? 8 : (mobile ? 9 : 11);
+  return { size, gap, columns: Math.max(1, Math.floor((Math.max(0, width - 8) + gap) / (size + gap))) };
 };
 export const materializeTableSlots = (items: Table[]): Table[] => {
   const used = new Map<Area, Set<number>>();

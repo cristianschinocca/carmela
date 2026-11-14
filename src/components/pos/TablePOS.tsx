@@ -7,15 +7,16 @@ import {
   type CSSProperties,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { createPortal } from "react-dom";
 import {
   Check,
-  ChevronDown,
   GripVertical,
   Grid2X2,
   LayoutGrid,
   Minus,
   Plus,
   RotateCcw,
+  Settings2,
   Trash2,
   X,
 } from "lucide-react";
@@ -48,7 +49,6 @@ import {
 } from "../../pos/floorModel";
 import { previewCounterTableNumber } from "../../stores/counterSequence";
 
-const floorEditGroupClassName = "flex min-w-0 flex-wrap items-center gap-[7px] max-[760px]:max-w-full [&_.button]:!min-h-9 [&_.button]:!px-[11px] [&_.button]:!py-2";
 export default function TablePOS({
   products,
   categories,
@@ -87,6 +87,9 @@ export default function TablePOS({
   const [pinPurpose, setPinPurpose] = useState<PinPurpose>("enter");
   const [layoutMode, setLayoutMode] = useState(false);
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
+  const [utilityRail, setUtilityRail] = useState<HTMLElement | null>(null);
+  const planTriggerRef = useRef<HTMLButtonElement>(null);
+  const planControlsRef = useRef<HTMLDivElement>(null);
   const [counterHovered, setCounterHovered] = useState(false);
   const pointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [activeArea, setActiveArea] = useState<Area>("salon");
@@ -121,6 +124,32 @@ export default function TablePOS({
     occupiedSelection, openAddTables, createTables, deleteSelectedTables, arrangeTables, moveSelectedArea, createSector, deleteSector,
   } = useFloorEditor({ tables, setTables, sectors, setSectors, selected, setSelectedId, activeArea, setActiveArea,
     setLayoutMode, areaCounts, isFreeform, boardHeight, onToast });
+  useEffect(() => {
+    setUtilityRail(document.querySelector<HTMLElement>(".workspace-utility-rail"));
+  }, []);
+  useEffect(() => {
+    if (!planMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!planControlsRef.current?.contains(event.target as Node)) {
+        setPlanMenuOpen(false);
+        setAddingTables(false);
+        setAddingSector(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPlanMenuOpen(false);
+      setAddingTables(false);
+      setAddingSector(false);
+      planTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [planMenuOpen, setAddingTables, setAddingSector]);
   const { update, lines, editorLine, editorProduct, moveWholeTable, moveTarget, destinationOwner,
     sourceNeedsMovePin, destinationNeedsMovePin, subtotal, discount, total,
     lineEditorId, setLineEditorId, selectedLineId, setSelectedLineId, lineNoteDraft, setLineNoteDraft,
@@ -490,8 +519,15 @@ export default function TablePOS({
     setAccountOpen(true);
     onToast(`${operator.name} ingresó a ${selected ? displayTableName(selected) : "la mesa"}.`);
   };
+  const closingSaleRef = useRef(false);
+  useEffect(() => { if (!accountOpen) closingSaleRef.current = false; }, [accountOpen]);
   const closeSale = () => {
-    if (!selected || !selected.items.length || !payment) return;
+    if (!selected || !selected.items.length || !payment || closingSaleRef.current) return;
+    if (localStorage.getItem(KEY) !== JSON.stringify(tables)) {
+      onToast("El plano cambió en otra pestaña. Recargá antes de cobrar.");
+      return;
+    }
+    closingSaleRef.current = true;
     const name = displayTableName(selected);
     const closedAt = new Date().toISOString();
     const subtotalAmount = lines.reduce(
@@ -516,21 +552,17 @@ export default function TablePOS({
         ...(line.note ? { note: line.note } : {}),
       })),
     };
+    const nextTables = selected.area === "counter"
+      ? compactCounterSlots(tables.filter((table) => table.id !== selected.id))
+      : tables.map((table) => table.id === selected.id ? { ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined } : table);
     try {
-      onStockChange(settleSaleLocally(sale, products));
-    } catch {
-      onToast("No se pudo cerrar la mesa. Revisá las recetas y el almacenamiento del navegador.");
+      onStockChange(settleSaleLocally(sale, products, KEY, nextTables));
+    } catch (error) {
+      closingSaleRef.current = false;
+      onToast(error instanceof Error && error.message.startsWith("Stock insuficiente:") ? error.message : "No se pudo cerrar la mesa. Revisá las recetas y el almacenamiento del navegador.");
       return;
     }
-    if (selected.area === "counter") setTables((current) => compactCounterSlots(current.filter((table) => table.id !== selected.id)));
-    else update((table) => ({
-      ...table,
-      items: [],
-      discount: 0,
-      billRequested: false,
-      operatorId: undefined,
-      counterTurnNumber: undefined,
-    }));
+    setTables(nextTables);
     setAccountOpen(false);
     setOperator(null);
     onToast(`${name} cobrada y cerrada por ${money(total)} · ${payment}.`);
@@ -563,42 +595,36 @@ export default function TablePOS({
   };
   return (
     <div className="floor-manager">
-      <section className="panel !block !px-5 !py-3 max-[760px]:!px-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="!m-0 !text-[17px] max-[760px]:!text-[15px] max-[760px]:whitespace-nowrap">Plano de mesas</h2>
-            <p className="!mt-0.5 !text-[10px]">
-              {tables.filter((table) => table.items.length).length} abiertas ·{" "}
-              {tables.length} de {floorCapacity} lugares · {sectors.length} sectores
-            </p>
-          </div>
+      {utilityRail && createPortal(<div className="floor-plan-controls" ref={planControlsRef}>
           <button
+            ref={planTriggerRef}
             type="button"
-            className="button !min-h-9 !gap-2 !px-3 max-[760px]:!px-2"
+            className={`utility-rail-button floor-plan-trigger${layoutMode ? " is-editing" : ""}`}
+            aria-label="Configurar plano de mesas"
+            title="Configurar plano de mesas"
             aria-expanded={planMenuOpen}
             aria-controls="floor-plan-tools"
             onClick={() => {
               setPlanMenuOpen((open) => !open);
               setAddingTables(false);
+              setAddingSector(false);
             }}
           >
-            <span>{layoutMode ? "Editando plano" : "Opciones"}</span>
-            <ChevronDown size={16} className={`transition-transform duration-200 motion-reduce:transition-none ${planMenuOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+            <Settings2 size={17} aria-hidden="true" />
           </button>
-        </div>
         <AnimatePresence initial={false}>
           {planMenuOpen && (
             <motion.div
               id="floor-plan-tools"
-              style={{ overflow: addingTables ? "visible" : "hidden" }}
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: reducedMotion ? 0 : 0.2 }}
+              className="floor-plan-popover"
+              initial={{ opacity: 0, x: 8, scale: 0.98 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 8, scale: 0.98 }}
+              transition={{ duration: reducedMotion ? 0 : 0.16, ease: "easeOut" }}
             >
-          <div className="mt-3 flex flex-wrap items-start gap-2 border-t border-[var(--border)] pt-3">
+          <div className="floor-plan-toolbar" role="group" aria-label="Opciones del plano">
             <div className="table-add-anchor">
-              <button className="button" aria-expanded={addingTables} onClick={() => addingTables ? setAddingTables(false) : openAddTables()}>
+              <button className="button" aria-expanded={addingTables} onClick={() => { setAddingSector(false); addingTables ? setAddingTables(false) : openAddTables(); }}>
                 <Plus size={16} /> Agregar mesa
               </button>
               {addingTables && <div className="panel table-add-panel" role="region" aria-label="Agregar mesas" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setAddingTables(false); } }}>
@@ -619,27 +645,7 @@ export default function TablePOS({
                 <button className="button primary table-add-submit" onClick={createTables} disabled={(areaCounts[addArea] || 0) >= (sectors.find((area) => area.id === addArea)?.limit || 0)}><Plus size={15} /> Agregar {addCount === 1 ? "mesa" : "mesas"}</button>
               </div>}
             </div>
-            <button
-              className={layoutMode ? "button primary" : "button"}
-              aria-pressed={layoutMode}
-              onClick={() => {
-                setLayoutMode((value) => !value);
-                setSelectedId(null);
-                setSelectingTables(false);
-                setSelectedTableIds([]);
-                setConfirmDeleteTables(false);
-                setAddingTables(false);
-                setAddingSector(false);
-                if (layoutMode) setPlanMenuOpen(false);
-              }}
-            >
-              <Grid2X2 size={16} />
-              {layoutMode ? "Terminar edición" : "Editar plano"}
-            </button>
-          </div>
-        {layoutMode && <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-3.5 border-t border-[var(--border)] pt-3 max-[760px]:gap-x-[18px]" role="group" aria-label="Herramientas de edición del plano">
-          <div className={floorEditGroupClassName}>
-            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Mesas</span>
+          {layoutMode && <>
             <button className={selectingTables ? "button !border-[var(--brand)] !bg-[var(--brand-soft)] !text-[var(--brand-deep)]" : "button"} aria-pressed={selectingTables} onClick={() => {
               setSelectingTables((value) => !value);
               setSelectedTableIds([]);
@@ -649,14 +655,9 @@ export default function TablePOS({
             {selectedTableIds.length > 0 && <button className="button danger-button" onClick={() => setConfirmDeleteTables(true)}>
               <Trash2 size={15} /> Eliminar ({selectedTableIds.length})
             </button>}
-          </div>
-          <div className={floorEditGroupClassName}>
-            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Sectores</span>
-            <button className="button" onClick={() => setAddingSector(true)}><Plus size={16} /> Agregar sector</button>
-          </div>
-          <div className={floorEditGroupClassName}>
-            <span className="mb-px basis-full text-[10px] font-semibold tracking-[.03em] text-[var(--muted)]">Distribución</span>
-            <button className="button" onClick={() => arrangeTables()}><LayoutGrid size={16} /> Alinear todas</button>
+            <button className="button" aria-expanded={addingSector} onClick={() => { setAddingTables(false); setAddingSector((value) => !value); }}><Plus size={16} /> Agregar sector</button>
+            {addingSector && <div className="panel sector-create" role="region" aria-label="Agregar sector"><label htmlFor="new-sector-name">Nombre del sector</label><input id="new-sector-name" autoFocus maxLength={32} value={sectorName} onChange={(event) => setSectorName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSector(); if (event.key === "Escape") { event.stopPropagation(); setAddingSector(false); } }} placeholder="Ej. Terraza" /><button className="button primary" onClick={createSector} disabled={!sectorName.trim()}>Crear sector</button><button className="button" onClick={() => setAddingSector(false)}>Cancelar</button></div>}
+            <button className="button" onClick={() => arrangeTables()} title="Alinear todas las mesas"><LayoutGrid size={16} /> Alinear</button>
             {sectors.length === 3 && ["salon", "patio", "counter"].every((id) => sectors.some((sector) => sector.id === id)) && (
             <button className="button" onClick={() => {
               const width = boardRef.current?.clientWidth;
@@ -668,16 +669,31 @@ export default function TablePOS({
               setSectors((current) => current.map((sector) => ({ ...sector, layout: mosaic[sector.id], autoFit: true })));
               normalizedLayoutRef.current = true;
               onToast("Distribución inicial aplicada.");
-            }}><RotateCcw size={16} /> Restablecer distribución</button>
+            }} title="Restablecer distribución"><RotateCcw size={16} /> Restablecer</button>
             )}
+          </>}
+            <button
+              className={layoutMode ? "button primary floor-plan-edit-toggle" : "button floor-plan-edit-toggle"}
+              aria-pressed={layoutMode}
+              onClick={() => {
+                setLayoutMode((value) => !value);
+                setSelectedId(null);
+                setSelectingTables(false);
+                setSelectedTableIds([]);
+                setConfirmDeleteTables(false);
+                setAddingTables(false);
+                setAddingSector(false);
+                setPlanMenuOpen(false);
+              }}
+            >
+              <Grid2X2 size={16} />
+              {layoutMode ? "Terminar edición" : "Editar plano"}
+            </button>
           </div>
-        </div>}
-        {layoutMode && <p className="!mt-3 !text-[10px]">{selectingTables ? "Seleccioná las mesas que querés eliminar." : "Arrastrá las mesas o los sectores para acomodarlos. Cambiá el tamaño desde las esquinas."} Los cambios se guardan automáticamente.</p>}
             </motion.div>
           )}
         </AnimatePresence>
-      </section>
-      {addingSector && <div className="panel sector-create"><label htmlFor="new-sector-name">Nombre del sector</label><input id="new-sector-name" autoFocus maxLength={32} value={sectorName} onChange={(event) => setSectorName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSector(); if (event.key === "Escape") setAddingSector(false); }} placeholder="Ej. Terraza" /><button className="button primary" onClick={createSector} disabled={!sectorName.trim()}>Crear sector</button><button className="button" onClick={() => setAddingSector(false)}>Cancelar</button></div>}
+      </div>, utilityRail)}
       {confirmDeleteTables && <div className="panel table-delete-panel" role="region" aria-labelledby="table-delete-title" aria-describedby="table-delete-description">
         <div><strong id="table-delete-title">Eliminar {selectedTableIds.length} {selectedTableIds.length === 1 ? "mesa" : "mesas"}</strong><p id="table-delete-description">{occupiedSelection.length ? `${occupiedSelection.length} ${occupiedSelection.length === 1 ? "tiene consumos o una cuenta solicitada. Cerrá esa mesa o sacala" : "tienen consumos o una cuenta solicitada. Cerrá esas mesas o sacalas"} de la selección para continuar.` : "Se quitarán del plano las mesas seleccionadas. Esta acción no se puede deshacer."}</p></div>
         <button className="button danger-button" disabled={Boolean(occupiedSelection.length)} onClick={deleteSelectedTables}>Confirmar eliminación</button>
@@ -722,7 +738,7 @@ export default function TablePOS({
                   const status = table.billRequested && amount ? "billing" : amount ? "occupied" : "free";
                   const slot = table.slot ?? index;
                   const columns = tableColumns[area.id] || 1;
-                  return <motion.button key={table.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !sectorGestureSettling && !reducedMotion ? "position" : false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ ...transitions.fast, layout: transitions.fast }} className={`floor-table ${status}${selectedId === table.id && !selectingTables ? " selected" : ""}${selectedTableIds.includes(table.id) ? " bulk-selected" : ""}${dropTarget?.area === area.id && dropTarget.slot === slot ? " drop-target" : ""}`} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={layoutMode ? undefined : press}
+                  return <motion.button key={table.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !sectorGestureSettling && !reducedMotion ? "position" : false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ ...transitions.fast, layout: transitions.fast }} className={`floor-table ${status}${layoutMode && selectedId === table.id && !selectingTables ? " selected" : ""}${selectedTableIds.includes(table.id) ? " bulk-selected" : ""}${dropTarget?.area === area.id && dropTarget.slot === slot ? " drop-target" : ""}`} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={layoutMode ? undefined : press}
                     style={{ gridColumn: slot % columns + 1, gridRow: Math.floor(slot / columns) + 1 }}
                     draggable={layoutMode && !selectingTables} onDragStart={(event) => { event.stopPropagation(); setDraggedTableId(table.id); setSelectedId(table.id); }} onDragEnd={() => { setDraggedTableId(null); setDropTarget(null); }}
                     onPointerDown={(event) => startTableTouch(event, table)} onPointerMove={moveTableTouch} onPointerUp={(event) => finishTableTouch(event)} onPointerCancel={(event) => finishTableTouch(event, true)}

@@ -104,6 +104,7 @@ export function applySaleToStock(sale: SaleRecord, products: Product[]) {
     const item = next[line.productId];
     if (!item?.enabled || !products.some((product) => product.id === line.productId)) continue;
     const balance = item.quantity - line.quantity;
+    if (balance < 0) throw new Error(`Stock insuficiente: ${line.name}.`);
     next[line.productId] = { ...item, quantity: balance };
     added.push({ id: crypto.randomUUID(), productId: line.productId, productName: line.name,
       at: sale.closedAt, type: "venta", change: -line.quantity, balance,

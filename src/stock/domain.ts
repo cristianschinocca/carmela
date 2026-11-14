@@ -61,6 +61,10 @@ export function applySaleToIngredients(catalog: StockCatalog, sale: SaleRecord):
     }
   }
   if (!quantities.size) return catalog;
+  for (const ingredient of catalog.ingredients) {
+    if ((quantities.get(ingredient.id) ?? 0) > ingredient.quantity + 1e-9)
+      throw new Error(`Stock insuficiente: ${ingredient.name}.`);
+  }
   return {
     ...catalog,
     ingredients: catalog.ingredients.map((ingredient) => quantities.has(ingredient.id)

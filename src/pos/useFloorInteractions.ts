@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction, type RefObject, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { FREEFORM_MIN_HEIGHT, MAX_SECTOR_HEIGHT, TABLE_SLOT_LIMIT, tableGridMetrics, materializeTableSlots, sectorRect, sectorObstacles, moveSectorRect, resizeSectorAndPush, type Area, type Sector, type SectorLayout, type SectorRect, type Table } from "./floorModel";
 
-type SectorResizeMetrics = { widthOffset: number; chromeHeight: number; rowHeight: number; rowGap: number; lastSlot: number };
+type SectorResizeMetrics = { widthOffset: number; chromeHeight: number; rowHeight: number; rowGap: number; lastSlot: number; compact: boolean };
 type SectorDragGesture = {
   id: string; pointerId: number; x: number; pageY: number; layout: SectorLayout;
   latest: SectorLayout; boardWidth: number; moved: boolean;
@@ -74,14 +74,16 @@ export function useFloorInteractions({ boardRef, boardHeight, setBoardHeight, se
     return {
       widthOffset: list.clientWidth - element.getBoundingClientRect().width,
       chromeHeight: parseFloat(styles.paddingTop) + head.offsetHeight +
-        parseFloat(getComputedStyle(head).marginBottom) + parseFloat(styles.paddingBottom) + 4,
+        parseFloat(getComputedStyle(head).marginBottom) + parseFloat(styles.paddingBottom) +
+        parseFloat(listStyles.paddingTop) + parseFloat(listStyles.paddingBottom) + 2,
       rowHeight: parseFloat(listStyles.gridAutoRows) || 56,
       rowGap: parseFloat(listStyles.rowGap) || 11,
       lastSlot: Math.max(-1, ...visible.map((table, index) => table.slot ?? index)),
+      compact: id === "counter",
     };
   };
   const sectorGridColumns = (metrics: SectorResizeMetrics, width: number) =>
-    tableGridMetrics(Math.max(0, width + metrics.widthOffset)).columns;
+    tableGridMetrics(Math.max(0, width + metrics.widthOffset), metrics.compact).columns;
   const minimumSectorHeight = (metrics: SectorResizeMetrics, width: number) => {
     const rows = Math.floor(metrics.lastSlot / sectorGridColumns(metrics, width)) + 1;
     return Math.min(MAX_SECTOR_HEIGHT, Math.max(FREEFORM_MIN_HEIGHT, Math.ceil(
@@ -346,10 +348,10 @@ export function useFloorInteractions({ boardRef, boardHeight, setBoardHeight, se
     const list = sector?.querySelector<HTMLElement>(".floor-sector-tables");
     if (!list) return 0;
     const rect = list.getBoundingClientRect();
-    const { size, gap, columns } = tableGridMetrics(list.clientWidth);
-    const rowHeight = window.innerWidth <= 760 ? 52 : 56;
-    const column = Math.max(0, Math.min(columns - 1, Math.floor((clientX - rect.left + gap / 2) / (size + gap))));
-    const row = Math.max(0, Math.floor((clientY - rect.top + gap / 2) / (rowHeight + gap)));
+    const { size, gap, columns } = tableGridMetrics(list.clientWidth, area === "counter");
+    const rowHeight = area === "counter" ? (window.innerWidth <= 760 ? 42 : 46) : (window.innerWidth <= 760 ? 52 : 56);
+    const column = Math.max(0, Math.min(columns - 1, Math.floor((clientX - rect.left - 4 + gap / 2) / (size + gap))));
+    const row = Math.max(0, Math.floor((clientY - rect.top - 4 + gap / 2) / (rowHeight + gap)));
     return Math.min(TABLE_SLOT_LIMIT - 1, row * columns + column);
   };
   const moveTableTo = (id: string, area: Area, slot: number) => {

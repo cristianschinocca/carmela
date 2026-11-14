@@ -184,3 +184,35 @@ html[data-theme='dark'] .account-dialog-scrim .product-position-canvas>button{ba
 .table-add-stepper input::-webkit-inner-spin-button,.table-add-stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .table-add-submit{width:100%;min-height:40px}
 
+/* Keep floor controls in the utility rail so the floor uses the full workspace. */
+.floor-manager{position:relative;display:block}
+.workspace-utility-rail:has(.floor-plan-controls){z-index:30}
+.floor-plan-controls{position:relative;z-index:1;display:grid;place-items:center;width:100%;margin-top:auto;padding-bottom:4px}
+.floor-plan-trigger.is-editing,.floor-plan-trigger[aria-expanded="true"]{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-deep)}
+.floor-plan-popover{position:absolute;right:calc(100% + 10px);bottom:0;z-index:2;width:min(280px,calc(100vw - 90px));max-height:calc(100dvh - 30px);overflow-y:auto;transform-origin:bottom right;box-shadow:0 16px 48px #0004;scrollbar-width:thin}
+.floor-plan-toolbar{display:grid;gap:5px;padding:8px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.floor-plan-toolbar .button{justify-content:flex-start;min-height:36px;padding:0 10px;font-size:11px;text-align:left}
+.floor-plan-toolbar .floor-plan-edit-toggle{margin-top:5px;border-top-color:var(--border)}
+.floor-plan-toolbar .table-add-anchor .button{width:100%}
+.floor-plan-toolbar .table-add-anchor .table-add-panel{position:static;width:100%;margin-top:8px;box-shadow:none}
+.floor-plan-toolbar .sector-create{display:grid;gap:8px;padding:10px;box-shadow:none}
+.floor-plan-toolbar .sector-create label{white-space:normal}
+.floor-plan-toolbar .sector-create input{min-width:0;width:100%}
+.floor-manager>.floor-stage{padding:0!important;border:0;background:transparent;box-shadow:none}
+.floor-board.freeform .floor-sector{border-radius:16px}
+.floor-board.freeform .floor-sector-head{min-height:32px;margin-bottom:12px}
+.floor-board.freeform .floor-sector[data-sector-id="counter"].editing .floor-sector-head{flex-wrap:wrap;gap:6px}
+.floor-board.freeform .floor-sector[data-sector-id="counter"].editing .floor-sector-title{flex:1 1 100%}
+.floor-board.freeform .floor-sector[data-sector-id="counter"].editing .sector-controls{width:100%;justify-content:flex-end}
+.floor-sector-title strong{font-size:14px}
+.floor-sector-title small,.floor-sector-title b{font-size:11px}
+.floor-board.freeform .floor-sector:not(.editing):hover{border-color:color-mix(in srgb,var(--text) 15%,var(--border));box-shadow:0 7px 20px #00000010}
+.floor-board.freeform .floor-sector.hovered:not(.editing){border-color:color-mix(in srgb,var(--brand) 30%,var(--border))}
+.floor-board .floor-table i{width:5px;height:5px;opacity:.8}
+.floor-board.freeform .floor-sector-tables{padding:4px 4px 6px}
+.floor-board .floor-table:focus-visible{outline:2px solid var(--brand);outline-offset:-3px}
+.floor-board .floor-sector[data-sector-id="counter"] .floor-sector-tables{grid-template-columns:repeat(var(--table-columns,1),50px);grid-auto-rows:46px;gap:8px}
+.floor-board .floor-sector[data-sector-id="counter"] .floor-table strong{font-size:12px}
+@media(max-width:760px){.floor-board .floor-sector[data-sector-id="counter"] .floor-sector-tables{grid-template-columns:repeat(var(--table-columns,1),46px);grid-auto-rows:42px}}
+@media(max-width:760px){.floor-plan-popover{right:calc(100% + 6px);width:min(280px,calc(100vw - 62px))}.floor-board.freeform .floor-sector.editing .floor-sector-head{flex-wrap:wrap;gap:6px}.floor-board.freeform .floor-sector.editing .floor-sector-title{flex:1 1 100%}.floor-board.freeform .floor-sector.editing .sector-controls{width:100%;justify-content:flex-end}}
+

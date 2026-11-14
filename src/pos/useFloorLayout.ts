@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
-import { FREEFORM_MIN_HEIGHT, SECTOR_GAP, tableGridMetrics, makeDefaultMosaic, sectorRect, sectorsTouch, type Area, type Sector, type SectorRect, type Table } from "./floorModel";
+import { FREEFORM_MIN_HEIGHT, MAX_SECTOR_HEIGHT, SECTOR_GAP, tableGridMetrics, makeDefaultMosaic, resizeSectorAndPush, sectorRect, sectorsTouch, type Area, type Sector, type SectorRect, type Table } from "./floorModel";
 
 type Props = {
   boardRef: RefObject<HTMLDivElement | null>; sectorsRef: RefObject<Sector[]>; resizeRef: RefObject<unknown>;
@@ -24,7 +24,7 @@ export function useFloorLayout({ boardRef, sectorsRef, resizeRef, sectors, setSe
     for (const element of elements) {
       const list = element.querySelector<HTMLElement>(".floor-sector-tables");
       const area = element.dataset.sectorId;
-      if (list && area && list.clientWidth) measuredColumns[area] = tableGridMetrics(list.clientWidth).columns;
+      if (list && area && list.clientWidth) measuredColumns[area] = tableGridMetrics(list.clientWidth, area === "counter").columns;
     }
     setTableColumns((previous) => Object.entries(measuredColumns).every(([area, count]) => previous[area] === count)
       ? previous : { ...previous, ...measuredColumns });
@@ -95,6 +95,18 @@ export function useFloorLayout({ boardRef, sectorsRef, resizeRef, sectors, setSe
         setSectors(normalized);
         return;
       }
+    }
+    // Un plano guardado puede tener menos alto que sus mesas tras cambiar el ancho.
+    // Ajustarlo una vez y desplazar los sectores inferiores evita filas cortadas y barras internas.
+    for (const element of elements) {
+      const list = element.querySelector<HTMLElement>(".floor-sector-tables");
+      const sector = current.find((item) => item.id === element.dataset.sectorId);
+      if (!list || !sector?.layout || sector.autoFit || sector.layout.height >= MAX_SECTOR_HEIGHT || list.scrollHeight <= list.clientHeight + 1) continue;
+      const neededHeight = sector.layout.height + list.scrollHeight - list.clientHeight + 8;
+      setSectors((items) => resizeSectorAndPush(items, sector.id, {
+        ...sectorRect(sector.layout!, board.clientWidth), height: neededHeight,
+      }, board.clientWidth, neededHeight));
+      return;
     }
     const salon = current.find((sector) => sector.id === "salon");
     const patio = current.find((sector) => sector.id === "patio");
