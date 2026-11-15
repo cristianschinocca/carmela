@@ -1,62 +1,53 @@
 # Carmela
 
-React + TypeScript + Vite + Tailwind CSS 4 + Lucide + Motion. Gestor: pnpm.
+Sistema para cafeterías en un monorepo pnpm. La interfaz sigue siendo una demostración con datos en el navegador; la API y las bases ya están separadas para conectar cada módulo gradualmente.
 
-## Ejecutar
+## Estructura
+
+| Carpeta | Responsabilidad |
+| --- | --- |
+| `apps/web` | React, Vite, TypeScript y Tailwind. Dashboard, POS y menú público. |
+| `apps/api` | Express y Better Auth. Sesiones, autorización y rutas HTTP. Es el único proceso que accede a las bases. |
+| `packages/db` | Prisma de la base central, migraciones y conexiones a las bases de cada cafetería. |
+| `scripts` | Validaciones de la interfaz con Playwright. |
+| `docs` | Decisiones de arquitectura, frontend y operación. |
+
+```
+apps/web ──HTTP──▶ apps/api ──▶ carmela_control (usuarios, sesiones, cafeterías)
+                            └──▶ carmela_demo (datos operativos de Carmela)
+```
+
+La base central contiene usuarios y membresías. Cada cafetería tendrá una base operativa propia; la API obtiene su conexión a partir de la membresía autorizada. En Docker ambas bases lógicas viven en un mismo PostgreSQL para ahorrar recursos. Prisma gestiona la base central. Cuando se implementen ventas, stock y caja en el servidor, sus modelos y migraciones se agregarán por dominio en `packages/db`, sin mezclar datos de cafeterías.
+
+## Desarrollo
+
+Requisitos: Node 24, pnpm 12 y Docker Desktop.
 
 ```sh
 pnpm install
+pnpm --filter @carmela/db generate
 pnpm dev
 ```
 
-Abrir http://127.0.0.1:5173. Menú público: http://127.0.0.1:5173/#menu.
-
-## Desarrollo con Docker
-
-Con Docker Desktop abierto, desde la carpeta del proyecto ejecutá:
+El frontend local abre en http://127.0.0.1:5173. Para iniciar API, PostgreSQL y frontend juntos:
 
 ```sh
-docker compose up --build
+docker compose up -d --build
 ```
 
-Abrí http://127.0.0.1:5174. Docker usa ese puerto para que pueda funcionar junto al servidor local en el 5173. Si necesitás otro, configurá `FRONTEND_PORT` antes de iniciar Compose (por ejemplo, en PowerShell: `$env:FRONTEND_PORT = "5175"`). Los cambios en el código se reflejan automáticamente; la primera ejecución descarga la imagen e instala las dependencias. Para detenerlo, presioná `Ctrl+C` y ejecutá `docker compose down`. Para iniciarlo en segundo plano usá `docker compose up -d --build`; sus registros se consultan con `docker compose logs -f frontend`.
+El frontend de Docker abre en http://127.0.0.1:5174 y la API en http://127.0.0.1:3001. `FRONTEND_PORT` y `API_PORT` permiten cambiar los puertos publicados. Las credenciales y secretos de `compose.yaml` son solo para desarrollo.
 
-Las dependencias de Linux se guardan en un volumen independiente de `node_modules` de Windows. Si se modifica `pnpm-lock.yaml`, reiniciá el servicio con `docker compose up --build` para actualizar las dependencias. La configuración habilita el seguimiento de archivos por sondeo para Windows y Docker Desktop.
+## Base central
 
-Esta configuración es para desarrollo local. La aplicación sigue siendo una demostración sin servidor ni base de datos: sus datos permanecen en el `localStorage` del navegador.
+La migración inicial está en `packages/db/prisma/migrations`. Docker Compose la aplica al iniciar la API. Fuera de Docker, en una base **nueva** se aplica con `pnpm --filter @carmela/db migrate:deploy` y `CONTROL_DATABASE_URL` configurada. Si la base ya fue creada con los scripts anteriores, primero se marca esa migración como aplicada con `prisma migrate resolve --applied 20261115000000_baseline`; no se vuelve a ejecutar el SQL sobre tablas existentes. Ver [guía de API y datos](apps/api/README.md).
+
+Better Auth usa el cliente Prisma central. El login visible en el frontend aún es de demostración y no autentica contra la API. No hay pagos reales ni datos compartidos entre dispositivos. Antes de usar datos reales faltan permisos por módulo, migraciones de las bases operativas, pruebas de concurrencia y copias de seguridad.
+
+## Verificación
 
 ```sh
 pnpm build
-pnpm exec playwright install chromium
-node scripts/validate.mjs
+docker compose exec api pnpm --filter @carmela/api test
 ```
 
-La validación requiere el servidor de desarrollo activo. Capturas en `artifacts/`.
-
-## Alcance
-
-Resumen, POS interactivo, catálogo, pedidos, caja, menú digital, reportes, equipo y preferencias. La gestión de productos permite crear, editar, ocultar, eliminar y reordenar; las categorías pueden crearse, renombrarse y eliminarse cuando no tienen productos. El módulo Equipo administra usuarios con roles de cajero, mozo, barista, encargado y propietario, junto con PIN de cuatro cifras y fichajes de entrada/salida. Productos, categorías, equipo y fichajes persisten en `localStorage`. No hay backend, pagos reales, publicación ni QR de producción.
-
-## Organización
-
-- `src/main.tsx`: punto de entrada; monta React y los proveedores globales.
-- `src/App.tsx`: estado y navegación del dashboard de gestión.
-- `src/components/pos/`: interfaz de mesas, comandas, cobros y sus modales.
-- `src/components/stock/`: inventario de productos, alertas y carga rápida.
-- `src/components/products/`, `team/`, `attendance/`, `cash/`, `menu/`, `reports/` y `auth/`: componentes por sección.
-- `src/components/shared/` y `src/components/ui/`: elementos compartidos y componentes shadcn/ui.
-- `src/pos/floorModel.ts`: tipos, distribución, límites y carga de mesas y sectores.
-- `src/pos/catalogLayout.ts`: colores y reglas de ordenamiento en la grilla del POS.
-- `src/pos/table-pos.css`: estilos del modal de cuenta y del catálogo del POS.
-- `src/components/menu/PublicMenu.tsx`: experiencia pública del menú digital, aislada del dashboard.
-- `src/hooks/useDashboardTheme.ts`: persistencia del tema del dashboard y separación del tema público.
-- `src/pos/README.md`: responsabilidades y organización de la lógica del punto de venta.
-- `src/data.ts`: datos y fotografías de demostración.
-- `src/motion.tsx`: tokens, variantes, proveedor y componentes animados compartidos.
-- `src/styles/`: estilos generales y por área, importados en orden desde `src/main.tsx`.
-- `docs/frontend-architecture.md`: mapa de responsabilidades del frontend.
-- `docs/design-system.md`: decisiones visuales y alcance.
-- `docs/arquitectura-objetivo.md`: arquitectura prevista, seguridad y etapas de implementación.
-- `docs/costos-operacion.md`: presupuesto orientativo y controles para la infraestructura.
-
-Las fotografías se sirven desde Unsplash y las fuentes desde Google Fonts; necesitan conexión. Las fechas y cifras son ilustrativas.
+Las pruebas visuales de `scripts/` requieren el frontend y Chromium de Playwright. Más detalles en [arquitectura objetivo](docs/arquitectura-objetivo.md).

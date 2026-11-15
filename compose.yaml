@@ -1,4 +1,45 @@
 services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: carmela
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-carmela_dev_only}
+      POSTGRES_DB: carmela_control
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carmela -d carmela_control"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: "3001"
+      BETTER_AUTH_URL: http://localhost:3001
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local_development_secret_replace_before_deploying_2026}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-5174}
+      CONTROL_DATABASE_URL: postgres://carmela:${LOCAL_DB_PASSWORD:-carmela_dev_only}@database:5432/carmela_control
+      TENANT_DB_CARMELA_URL: postgres://carmela:${LOCAL_DB_PASSWORD:-carmela_dev_only}@database:5432/carmela_demo
+    ports:
+      - "127.0.0.1:${API_PORT:-3001}:3001"
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+    command: >-
+      sh -c "pnpm install --frozen-lockfile &&
+      pnpm --filter @carmela/db generate &&
+      pnpm --filter @carmela/db migrate:deploy &&
+      exec pnpm --filter @carmela/api dev"
+
   frontend:
     build:
       context: .
@@ -6,6 +47,7 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:-5174}:5173"
     environment:
       CI: "true"
+      API_PROXY_TARGET: http://api:3001
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "300"
     volumes:
@@ -13,7 +55,9 @@ services:
       - frontend_node_modules:/app/node_modules
     command: >-
       sh -c "pnpm install --frozen-lockfile &&
-      exec pnpm exec vite --host 0.0.0.0 --port 5173 --strictPort"
+      exec pnpm --filter @carmela/web exec vite --host 0.0.0.0 --port 5173 --strictPort"
 
 volumes:
   frontend_node_modules:
+  api_node_modules:
+  postgres_data:

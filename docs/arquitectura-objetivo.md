@@ -1,15 +1,15 @@
 # Arquitectura objetivo
 
-Esta es una propuesta para evolucionar la demostración hacia un sistema para cafeterías. Hoy la aplicación funciona en el navegador con datos locales: no cuenta con backend, base de datos ni autenticación de producción. Las tecnologías siguientes son objetivos, no una descripción de dependencias ya instaladas.
+La aplicación de demostración todavía usa datos locales en el navegador. Ya existe una API Express con Better Auth, una base PostgreSQL central y otra base de ejemplo para Carmela. El login y los módulos operativos del frontend aún no consumen la API. Las tecnologías no instaladas se describen como objetivos.
 
 ## Organización
 
 - **Frontend:** React, TypeScript, Vite y Tailwind CSS; Zustand para estado compartido, TanStack Query para datos del servidor y React Hook Form con Zod para formularios.
-- **API:** Node.js, TypeScript y Express, organizada como monolito modular. Better Auth administra las sesiones; Socket.IO se incorpora cuando una función necesite actualización en tiempo real.
-- **Datos:** PostgreSQL es la fuente de verdad. La API y PostgreSQL se alojan en Railway, con la base de datos accesible por red privada.
+- **API:** Node.js, TypeScript y Express en `apps/api`. Better Auth administra las sesiones; Socket.IO se incorpora cuando una función necesite actualización en tiempo real.
+- **Datos:** `packages/db` contiene Prisma, las migraciones y las conexiones. Una base PostgreSQL central guarda identidad, sesiones y membresías; cada cafetería tiene una base PostgreSQL independiente para sus datos operativos. La API es la única capa que resuelve y accede a esas bases.
 - **Servicios:** Cloudflare Pages para el frontend estático, R2 para imágenes y Resend para correos. Docker Compose facilita el desarrollo local; pnpm y GitHub mantienen dependencias y código.
 
-La primera instalación atiende una cafetería. Los límites entre módulos deben permitir incorporar más negocios después, sin agregar infraestructura distribuida antes de necesitarla. Antes de ofrecer múltiples negocios se debe implementar y probar el aislamiento de datos en cada operación.
+La primera instalación atiende una cafetería. La estructura ya separa la base central y la base del negocio, sin exigir instancias PostgreSQL distintas durante el desarrollo. Antes de ofrecer múltiples negocios se debe implementar y probar el aislamiento de datos en cada operación. La base central no almacena ventas ni inventario.
 
 La API separará rutas, validación, casos de uso y acceso a datos por dominio: autenticación y equipo, catálogo, mesas y ventas, caja, stock y reportes. El frontend conserva componentes de interfaz separados de las consultas y reglas de negocio. Los contratos de API deben estar tipados y versionados de forma compatible; las validaciones críticas siempre se repiten en el servidor.
 
@@ -25,7 +25,7 @@ La API separará rutas, validación, casos de uso y acceso a datos por dominio: 
 
 ## Rendimiento y disponibilidad
 
-Empezar con una instancia de API y una base PostgreSQL, sin Redis ni workers separados hasta que las métricas lo justifiquen. Limitar y medir conexiones a la base, indexar consultas frecuentes, paginar historiales y evitar consultas repetidas. Usar caché de consultas en el frontend e invalidarla tras cambios; monitorear memoria, CPU, almacenamiento y errores. La disponibilidad y los costos deben medirse con el uso real del local.
+Empezar con una instancia de API y dos bases lógicas en un mismo PostgreSQL, sin Redis ni workers separados hasta que las métricas lo justifiquen. Limitar y medir conexiones a la base, indexar consultas frecuentes, paginar historiales y evitar consultas repetidas. Usar caché de consultas en el frontend e invalidarla tras cambios; monitorear memoria, CPU, almacenamiento y errores. La disponibilidad y los costos deben medirse con el uso real del local.
 
 ## Modo offline posterior
 
