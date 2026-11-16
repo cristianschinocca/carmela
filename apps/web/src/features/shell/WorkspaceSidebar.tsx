@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { motion } from "motion/react";
-import { Boxes, ChartNoAxesCombined, ChevronDown, Clock3, LayoutDashboard, LifeBuoy, LogOut, MessageSquareText, Moon, Package, QrCode, Settings, ShoppingBag, Sun, UsersRound } from "lucide-react";
-import type { TeamMember } from "../../stores/team";
+import { Boxes, ChartNoAxesCombined, ChevronDown, Clock3, LayoutDashboard, LifeBuoy, LogOut, MessageSquareText, Moon, Package, QrCode, Settings, ShieldCheck, ShoppingBag, Sun, UsersRound } from "lucide-react";
+import { isSuperadmin, type SessionUser } from "../auth/authClient";
 import { press } from "../../motion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 
@@ -21,7 +21,7 @@ type Props = {
   side: boolean;
   profileOpen: boolean;
   setProfileOpen: Dispatch<SetStateAction<boolean>>;
-  sessionMember: TeamMember;
+  sessionMember: SessionUser;
   page: string;
   go: (page: string) => void;
   logout: () => void;
@@ -37,18 +37,18 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
         <DropdownMenuTrigger asChild>
           <button type="button" className="workspace profile-workspace">
             <div className="avatar">{sessionMember.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
-            <span><strong>{sessionMember.name}</strong><small>{sessionMember.role}</small></span>
+            <span><strong>{sessionMember.name}</strong><small>{sessionMember.email}</small></span>
             <ChevronDown size={15} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={6} className="!z-[100] w-[var(--radix-dropdown-menu-trigger-width)] !rounded-xl !border-[var(--border)] !bg-[var(--surface)] !p-1.5 !text-[var(--text)] shadow-lg">
-          <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs focus:!bg-[var(--brand-soft)] focus:!text-[var(--text)]" onSelect={() => go("Configuración")}><Settings size={15} />Configuración</DropdownMenuItem>
+          {!isSuperadmin(sessionMember) && <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs focus:!bg-[var(--brand-soft)] focus:!text-[var(--text)]" onSelect={() => go("Configuración")}><Settings size={15} />Configuración</DropdownMenuItem>}
           <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs !text-[var(--brand)] focus:!bg-[var(--brand-soft)] focus:!text-[var(--brand)]" onSelect={logout}><LogOut size={15} />Cerrar sesión</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="nav-label">TU ESPACIO DE TRABAJO</span>
+      <span className="nav-label">{isSuperadmin(sessionMember) ? "ADMINISTRACIÓN" : "TU ESPACIO DE TRABAJO"}</span>
       <nav>
-        {nav.map(([label, Icon], i) => (
+        {!isSuperadmin(sessionMember) && nav.map(([label, Icon]) => (
           <motion.button
             layout
             whileTap={press}
@@ -60,6 +60,7 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
             <span>{label}</span>
           </motion.button>
         ))}
+        {isSuperadmin(sessionMember) && <motion.button layout whileTap={press} onClick={() => go("Superadmin")} className={page === "Superadmin" ? "active" : ""}><ShieldCheck size={19} /><span>Usuarios</span></motion.button>}
       </nav>
       <div className="sidebar-bottom">
         <div className="sidebar-help">
@@ -81,7 +82,7 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
               <b />
             </i>
           </button>
-          <button
+          {!isSuperadmin(sessionMember) && <button
             onClick={() =>
               toast(
                 "El centro de ayuda estará disponible próximamente.",
@@ -93,8 +94,8 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
               <strong>Ayuda y soporte</strong>
               <small>Centro de ayuda</small>
             </span>
-          </button>
-          <button
+          </button>}
+          {!isSuperadmin(sessionMember) && <button
             onClick={() =>
               toast(
                 "Gracias. Pronto vas a poder enviarnos tus sugerencias desde acá.",
@@ -106,7 +107,7 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
               <strong>Enviar sugerencia</strong>
               <small>Ayudanos a mejorar</small>
             </span>
-          </button>
+          </button>}
         </div>
       </div>
     </motion.aside>

@@ -6,6 +6,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc --noEmit",
     "auth:schema:reference": "auth generate --config src/auth.ts --output ../../packages/db/prisma/auth.reference.prisma --yes",
+    "auth:create-admin": "auth create-admin --config src/auth.ts",
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {

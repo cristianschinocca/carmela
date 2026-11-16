@@ -29,7 +29,8 @@ import { CashRegister } from "./components/cash/CashRegister";
 import { cashMovementImpact, isCashExpense, type CashExpense } from "./stores/cash";
 import { PublicMenu } from "./components/menu/PublicMenu";
 import { LoginPage } from "./components/auth/LoginPage";
-import { type TeamMember } from "./stores/team";
+import { authClient, isSuperadmin, type SessionUser } from "./features/auth/authClient";
+import { SuperadminPage } from "./features/superadmin/SuperadminPage";
 import { useDashboardTheme } from "./hooks/useDashboardTheme";
 import {
   modalVariants,
@@ -47,14 +48,12 @@ import {
   PRODUCT_STORAGE,
   loadCategories,
   loadCashExpenses,
-  loadDemoMember,
   loadProducts,
-  saveDemoMember,
-  clearDemoMember,
 } from "./stores/workspace";
 
 export function App() {
-  const [sessionMember, setSessionMember] = useState<TeamMember | null>(loadDemoMember);
+  const [sessionMember, setSessionMember] = useState<SessionUser | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>(loadProducts);
   const [stock, setStock] = useState<Stock>(loadStock);
@@ -74,6 +73,20 @@ export function App() {
   const [selected, setSelected] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>(loadCashExpenses);
+  useEffect(() => {
+    let active = true;
+    void authClient.getSession().then(({ data }) => {
+      if (active) {
+        setSessionMember(data?.user ?? null);
+        if (isSuperadmin(data?.user ?? null)) setPage("Superadmin");
+      }
+    }).catch(() => {
+      if (active) setSessionMember(null);
+    }).finally(() => {
+      if (active) setSessionLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     localStorage.setItem(PRODUCT_STORAGE, JSON.stringify(products));
   }, [products]);
@@ -99,17 +112,24 @@ export function App() {
     return () => window.removeEventListener("hashchange", syncPublicView);
   }, []);
   const go = (p: string) => {
+    if (isSuperadmin(sessionMember) && p !== "Superadmin") return;
+    if (p === "Superadmin" && !isSuperadmin(sessionMember)) return;
     setPage(p);
     setSide(false);
     setProfileOpen(false);
   };
-  const login = (member: TeamMember) => {
-    saveDemoMember(member);
-    setSessionMember(member);
-    setPage("Resumen");
+  const login = (user: SessionUser) => {
+    setSessionMember(user);
+    setPage(isSuperadmin(user) ? "Superadmin" : "Resumen");
   };
-  const logout = () => {
-    clearDemoMember();
+  const logout = async () => {
+    try {
+      const result = await authClient.signOut();
+      if (result.error) throw new Error(result.error.message);
+    } catch {
+      toast("No se pudo cerrar la sesión. Intentá nuevamente.");
+      return;
+    }
     setSessionMember(null);
     setProfileOpen(false);
     setSide(false);
@@ -210,6 +230,7 @@ export function App() {
     setCategoryList((current) => current.filter((item) => item !== name));
     return true;
   };
+  const visiblePage = isSuperadmin(sessionMember) ? "Superadmin" : page;
   return (
     <>
       <AnimatePresence
@@ -229,6 +250,8 @@ export function App() {
             }}
             onSelect={setSelected}
           />
+        ) : sessionLoading ? (
+          <main className="grid min-h-dvh place-items-center" role="status">Cargando sesión…</main>
         ) : !sessionMember ? (
           <LoginPage onLogin={login} onOpenMenu={openMenu} />
         ) : (
@@ -241,7 +264,7 @@ export function App() {
             exit="exit"
           >
             <div className="app-shell">
-            <WorkspaceSidebar side={side} profileOpen={profileOpen} setProfileOpen={setProfileOpen} sessionMember={sessionMember} page={page} go={go} logout={logout} darkMode={darkMode} setDarkMode={setDarkMode} toast={toast} />
+            <WorkspaceSidebar side={side} profileOpen={profileOpen} setProfileOpen={setProfileOpen} sessionMember={sessionMember} page={visiblePage} go={go} logout={logout} darkMode={darkMode} setDarkMode={setDarkMode} toast={toast} />
             <AnimatePresence>
               {side && (
                 <motion.div
@@ -255,7 +278,7 @@ export function App() {
               )}
             </AnimatePresence>
             <div className="main-shell">
-                <main className={page === "Punto de venta" ? "pos-page" : undefined}>
+                <main className={visiblePage === "Punto de venta" ? "pos-page" : undefined}>
                 <button
                   className="icon-btn mobile-toggle floating-menu"
                   aria-label="Abrir navegación"
@@ -265,39 +288,41 @@ export function App() {
                 </button>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
-                    key={page}
+                    key={visiblePage}
                     className="page-motion"
                     variants={pageVariants}
                     initial="initial"
                     animate="animate"
                     exit="exit"
                   >
-                    {page !== "Punto de venta" && <div className="page-heading">
+                    {visiblePage !== "Punto de venta" && <div className="page-heading">
                       <div>
-                        {!["Resumen", "Productos", "Stock", "Fichaje", "Menú digital", "Reportes", "Equipo"].includes(page) && <span className="eyebrow">CARMELA · TU OPERACIÓN</span>}
-                        <h1>{page}</h1>
+                        {!["Resumen", "Productos", "Stock", "Fichaje", "Menú digital", "Reportes", "Equipo", "Superadmin"].includes(visiblePage) && <span className="eyebrow">CARMELA · TU OPERACIÓN</span>}
+                        <h1>{visiblePage === "Superadmin" ? "Administración" : visiblePage}</h1>
                         <p>
-                          {page === "Resumen"
+                          {visiblePage === "Resumen"
                             ? "Ventas, mesas y caja."
-                            : page === "Productos"
+                            : visiblePage === "Productos"
                               ? "Catálogo de productos y categorías."
-                              : page === "Stock"
+                              : visiblePage === "Stock"
                                 ? "Productos, insumos, recetas y proveedores."
-                                : page === "Punto de venta"
+                                : visiblePage === "Punto de venta"
                                   ? "Mesas, consumos, descuentos y cobros en un solo lugar."
-                                  : page === "Menú digital"
+                                  : visiblePage === "Menú digital"
                                     ? "Vista previa y contenido del menú público."
-                                    : page === "Equipo"
+                                    : visiblePage === "Equipo"
                                       ? "Personas, roles y accesos del equipo."
-                                      : page === "Fichaje"
+                                    : visiblePage === "Superadmin"
+                                      ? "Usuarios y accesos al sistema."
+                                    : visiblePage === "Fichaje"
                                         ? "Entradas, salidas y personal en turno."
-                                        : page === "Reportes"
+                                        : visiblePage === "Reportes"
                                           ? "Ventas, cubiertos y productos por mes."
                                           : "Todo en su lugar, para que puedas enfocarte en tu café."}
                         </p>
                       </div>
                       <div className="heading-actions">
-                        {page === "Resumen" ? (
+                        {visiblePage === "Resumen" ? (
                           <>
                             <button
                               className="button"
@@ -316,23 +341,23 @@ export function App() {
                               <Plus size={17} /> Nueva venta
                             </button>
                           </>
-                        ) : page === "Menú digital" ? (
+                        ) : visiblePage === "Menú digital" ? (
                           <button className="button primary" onClick={openMenu}>
                             Ver menú público <ExternalLink size={16} />
                           </button>
                         ) : null}
                       </div>
                     </div>}
-                    {page === "Resumen" ? (
+                    {visiblePage === "Resumen" ? (
                       <OverviewPage period={period} products={products} cashExpenseTotal={cashExpenseTotal} cashPaidExpenses={cashPaidExpenses} go={go} openCash={() => { setCashMode("movements"); setCashOpen(true); }} />
-                    ) : page === "Punto de venta" ? (
+                    ) : visiblePage === "Punto de venta" ? (
                       <TablePOS
                         products={sellableProducts}
                         onStockChange={setStock}
                         categories={categoryList}
                         onToast={toast}
                       />
-                    ) : page === "Productos" ? (
+                    ) : visiblePage === "Productos" ? (
                       <ProductManager
                         products={products}
                         categories={categoryList}
@@ -344,15 +369,17 @@ export function App() {
                         onRenameCategory={renameCategory}
                         onDeleteCategory={deleteCategory}
                       />
-                    ) : page === "Stock" ? (
+                    ) : visiblePage === "Stock" ? (
                       <StockWorkspace products={products} stock={stock} onStockChange={setStock} onToast={toast} />
-                    ) : page === "Menú digital" ? (
+                    ) : visiblePage === "Menú digital" ? (
                       <MenuAdminPage products={products} categories={categoryList} openMenu={openMenu} />
-                    ) : page === "Reportes" ? (
+                    ) : visiblePage === "Reportes" ? (
                       <SalesReports products={products} />
-                    ) : page === "Equipo" ? (
+                    ) : visiblePage === "Equipo" ? (
                       <TeamManager />
-                    ) : page === "Fichaje" ? (
+                    ) : visiblePage === "Superadmin" && isSuperadmin(sessionMember) ? (
+                      <SuperadminPage currentUser={sessionMember} />
+                    ) : visiblePage === "Fichaje" ? (
                       <AttendanceManager />
                     ) : (
                       <SettingsPage saving={saving} onSubmit={savePreferences} />
@@ -362,18 +389,18 @@ export function App() {
               </main>
             </div>
               </div>
-            <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones">
+            {!isSuperadmin(sessionMember) && <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones">
               <StockAlerts products={products} stock={stock} onOpenStock={() => go("Stock")} />
               <div className="utility-rail-divider" role="separator" />
               <button className="utility-rail-button" aria-label="Abrir caja" aria-pressed={cashOpen && cashMode === "movements"} title="Caja" onClick={() => { setCashMode("movements"); setCashOpen(true); }}><Wallet size={19} /></button>
               <button className="utility-rail-button" aria-label="Abrir arqueo" aria-pressed={cashOpen && cashMode === "count"} title="Arqueo" onClick={() => { setCashMode("count"); setCashOpen(true); }}><ReceiptText size={19} /></button>
               <button className="utility-rail-button" aria-label="Mesas cobradas del día" aria-pressed={salesOpen} title="Mesas cobradas del día" onClick={() => setSalesOpen(true)}><ShoppingBag size={19} /></button>
-            </aside>
+            </aside>}
           </motion.div>
         )}
       </AnimatePresence>
-      <PaidTablesDialog open={salesOpen && !publicView && Boolean(sessionMember)} onClose={() => setSalesOpen(false)} />
-      <CashRegister mode={cashMode} open={cashOpen && !publicView && Boolean(sessionMember)} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
+      <PaidTablesDialog open={salesOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => setSalesOpen(false)} />
+      <CashRegister mode={cashMode} open={cashOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
       <AnimatePresence>
         {notice && (
           <motion.div

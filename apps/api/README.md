@@ -23,7 +23,19 @@ En una base central recién creada, aplicar la migración con `docker compose ex
 docker compose exec api pnpm --filter @carmela/db exec prisma migrate resolve --applied 20261115000000_baseline
 ```
 
-Después se puede crear el primer superadministrador con Better Auth. No se ejecutan migraciones en cada arranque del servidor; deben aplicarse explícitamente antes del despliegue. Para comparar el esquema de Better Auth con el de Prisma, `pnpm --filter @carmela/api auth:schema:reference` genera un archivo de referencia ignorado por Git.
+Después de aplicar la migración, creá el primer administrador desde una terminal interactiva:
+
+```sh
+docker compose exec api pnpm --filter @carmela/api auth:create-admin --email vos@tucafe.com --name "Tu nombre" --role admin
+```
+
+El comando solicita la contraseña sin incluirla en el historial de la terminal. No uses `--force` salvo que quieras crear deliberadamente otro administrador. El registro público está deshabilitado: la creación de nuevas cuentas requiere permisos de administrador. La sesión se conserva en una cookie gestionada por Better Auth; el frontend no guarda contraseñas ni tokens en `localStorage`.
+
+El primer administrador (`admin`) accede a **Superadmin** para crear usuarios comunes y activar o desactivar sus cuentas. Desactivar una cuenta revoca sus sesiones. La sección **Equipo** y los códigos de fichaje aún son datos locales de demostración: crear un usuario aquí no lo vincula automáticamente a una cafetería ni le asigna un rol operativo.
+
+En desarrollo fuera de Docker, configurá las variables de `apps/api/.env.example`, aplicá la migración y ejecutá `pnpm --filter @carmela/api auth:create-admin --email vos@tucafe.com --name "Tu nombre" --role admin`.
+
+No se ejecutan migraciones en cada arranque del servidor; deben aplicarse explícitamente antes del despliegue. Para comparar el esquema de Better Auth con el de Prisma, `pnpm --filter @carmela/api auth:schema:reference` genera un archivo de referencia ignorado por Git.
 
 ## Reglas para los próximos módulos
 

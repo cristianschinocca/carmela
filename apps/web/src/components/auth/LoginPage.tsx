@@ -3,10 +3,10 @@ import { ArrowUpRight, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/features/auth/LoginForm";
 import { pageVariants } from "../../motion";
-import type { TeamMember } from "../../stores/team";
+import type { SessionUser } from "../../features/auth/authClient";
 
 type LoginPageProps = {
-  onLogin: (member: TeamMember) => void;
+  onLogin: (user: SessionUser) => void;
   onOpenMenu: () => void;
 };
 
@@ -43,7 +43,7 @@ export function LoginPage({ onLogin, onOpenMenu }: LoginPageProps) {
       <footer className="!m-0 !block !w-full !border-0 !border-t !border-solid !border-[#e8e3e1] !p-0">
         <div className="mx-auto flex min-h-16 w-[min(calc(100%-48px),1120px)] items-center justify-between gap-3 text-xs text-[#756c70] max-sm:min-h-[76px] max-sm:w-[calc(100%-36px)] max-sm:flex-col max-sm:items-start max-sm:justify-center max-sm:gap-1">
           <span>© 2026 Carmela · Villa Madero, Buenos Aires</span>
-          <span>Versión de prueba · Datos guardados en este navegador</span>
+          <span>Los datos operativos todavía se guardan en este navegador</span>
         </div>
       </footer>
     </motion.main>

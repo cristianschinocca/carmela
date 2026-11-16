@@ -5,39 +5,39 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { defaultTeam, loadTeamMembers, type TeamMember } from "@/stores/team";
+import { authClient, type SessionUser } from "./authClient";
 import { loginSchema, type LoginValues } from "./loginSchema";
-
-const DEMO_CREDENTIALS: LoginValues = {
-  email: "demo@carmela.app",
-  password: "Carmela2026!",
-};
 
 const inputWrapClass = "relative flex min-h-12 items-center rounded-lg border border-[#d9d1d1] bg-white transition-[border-color,box-shadow] focus-within:border-[#bd2d69] focus-within:shadow-[0_0_0_3px_#bd2d6920] data-[invalid=true]:border-[#a72f55] motion-reduce:transition-none";
 const inputClass = "!min-h-[46px] !w-full !border-0 !bg-transparent !px-3.5 !py-0 !text-sm !text-[#282427] !shadow-none !outline-none placeholder:!text-[#82797c] focus:!border-0 focus-visible:!ring-0";
 const errorClass = "!text-xs !leading-[1.4] !text-[#a72f55]";
 
-export function LoginForm({ onLogin }: { onLogin: (member: TeamMember) => void }) {
+export function LoginForm({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
-    reset,
     setError,
     clearErrors,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
-  const submit = ({ email, password }: LoginValues) => {
-    if (email.toLowerCase() !== DEMO_CREDENTIALS.email || password !== DEMO_CREDENTIALS.password) {
-      setError("root.credentials", { message: "El correo o la contraseña no coinciden con la cuenta de prueba." });
-      return;
+  const submit = async ({ email, password }: LoginValues) => {
+    try {
+      const result = await authClient.signIn.email({ email, password });
+      if (result.error) {
+        setError("root.credentials", { message: "No pudimos iniciar sesión. Revisá el correo y la contraseña." });
+        return;
+      }
+      const session = await authClient.getSession();
+      if (!session.data?.user) throw new Error("Sesión no disponible");
+      onLogin(session.data.user);
+    } catch {
+      setError("root.credentials", { message: "No pudimos conectar con el servidor. Intentá nuevamente." });
     }
-    const owner = loadTeamMembers().find((member) => member.role === "Propietario" && member.active) ?? defaultTeam[0];
-    onLogin(owner);
   };
 
   return (
@@ -92,17 +92,10 @@ export function LoginForm({ onLogin }: { onLogin: (member: TeamMember) => void }
           <p id="login-error" className="!-mt-1 !text-xs !leading-normal !text-[#a72f55]" role="alert">{errors.root.credentials.message}</p>
         )}
 
-        <Button type="submit" size="lg" className="!mt-1 !flex !min-h-12 !items-center !justify-center !gap-2 !rounded-lg !bg-[#b92c68] !text-center !text-sm !font-semibold !text-white hover:!bg-[#9f2258] hover:![filter:none] focus-visible:!outline-[#bd2d69] focus-visible:!outline-offset-[3px]">
-          Ingresar al panel <ArrowRight size={17} />
+        <Button type="submit" size="lg" disabled={isSubmitting} className="!mt-1 !flex !min-h-12 !items-center !justify-center !gap-2 !rounded-lg !bg-[#b92c68] !text-center !text-sm !font-semibold !text-white hover:!bg-[#9f2258] hover:![filter:none] focus-visible:!outline-[#bd2d69] focus-visible:!outline-offset-[3px]">
+          {isSubmitting ? "Ingresando…" : "Ingresar al panel"} <ArrowRight size={17} />
         </Button>
       </form>
-
-      <div className="mt-8 border-t border-[#e8e3e1] pt-5">
-        <p className="!text-[13px] !text-[#71686c]">¿Querés probar el sistema?</p>
-        <Button type="button" variant="ghost" className="!-ml-2 !mt-1 !h-auto !rounded-md !px-2 !py-2 !text-xs !font-semibold !text-[#a1265b] hover:!bg-[#f2e8ec] hover:![filter:none] focus-visible:!outline-[#bd2d69] focus-visible:!outline-offset-2" onClick={() => reset(DEMO_CREDENTIALS)}>
-          Usar cuenta de prueba
-        </Button>
-      </div>
     </>
   );
 }
