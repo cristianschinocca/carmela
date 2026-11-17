@@ -22,6 +22,7 @@ type Props = {
   profileOpen: boolean;
   setProfileOpen: Dispatch<SetStateAction<boolean>>;
   sessionMember: SessionUser;
+  offlineMode: boolean;
   page: string;
   go: (page: string) => void;
   logout: () => void;
@@ -30,7 +31,7 @@ type Props = {
   toast: (message: string) => void;
 };
 
-export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMember, page, go, logout, darkMode, setDarkMode, toast }: Props) {
+export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMember, offlineMode, page, go, logout, darkMode, setDarkMode, toast }: Props) {
   return (
     <motion.aside className={side ? "sidebar visible" : "sidebar"}>
       <DropdownMenu modal={false} open={profileOpen} onOpenChange={setProfileOpen}>
@@ -42,13 +43,13 @@ export function WorkspaceSidebar({ side, profileOpen, setProfileOpen, sessionMem
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={6} className="!z-[100] w-[var(--radix-dropdown-menu-trigger-width)] !rounded-xl !border-[var(--border)] !bg-[var(--surface)] !p-1.5 !text-[var(--text)] shadow-lg">
-          {!isSuperadmin(sessionMember) && <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs focus:!bg-[var(--brand-soft)] focus:!text-[var(--text)]" onSelect={() => go("Configuración")}><Settings size={15} />Configuración</DropdownMenuItem>}
-          <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs !text-[var(--brand)] focus:!bg-[var(--brand-soft)] focus:!text-[var(--brand)]" onSelect={logout}><LogOut size={15} />Cerrar sesión</DropdownMenuItem>
+          {!offlineMode && !isSuperadmin(sessionMember) && <DropdownMenuItem className="!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs focus:!bg-[var(--brand-soft)] focus:!text-[var(--text)]" onSelect={() => go("Configuración")}><Settings size={15} />Configuración</DropdownMenuItem>}
+          <DropdownMenuItem className={`!min-h-10 !cursor-pointer !rounded-lg !px-3 !text-xs ${isSuperadmin(sessionMember) ? "!text-[var(--text)] focus:!bg-neutral-500/15 focus:!text-[var(--text)]" : "!text-[var(--brand)] focus:!bg-[var(--brand-soft)] focus:!text-[var(--brand)]"}`} onSelect={logout}><LogOut size={15} />Cerrar sesión</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="nav-label">{isSuperadmin(sessionMember) ? "ADMINISTRACIÓN" : "TU ESPACIO DE TRABAJO"}</span>
+      <span className="nav-label">{offlineMode ? "SIN CONEXIÓN" : isSuperadmin(sessionMember) ? "ADMINISTRACIÓN" : "TU ESPACIO DE TRABAJO"}</span>
       <nav>
-        {!isSuperadmin(sessionMember) && nav.map(([label, Icon]) => (
+        {!isSuperadmin(sessionMember) && (offlineMode ? nav.filter(([label]) => label === "Punto de venta") : nav).map(([label, Icon]) => (
           <motion.button
             layout
             whileTap={press}

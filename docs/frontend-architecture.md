@@ -14,3 +14,7 @@ Este documento describe el frontend de la demostración. La arquitectura con API
 - `src/styles/`: CSS existente dividido por área. `main.tsx` lo importa en orden para conservar la cascada; `refinements.css` contiene ajustes posteriores compartidos.
 
 `App` coordina datos entre módulos; cada pantalla renderiza su propia interfaz. Las claves de almacenamiento local son parte del contrato de la demostración y no deben cambiarse sin una migración.
+
+
+
+ac051d634321c30aa1db24c22f1a6cf5

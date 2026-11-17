@@ -15,4 +15,4 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 EXPOSE 5173
-CMD ["pnpm", "--filter", "@carmela/web", "exec", "vite", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+CMD ["pnpm", "--filter", "@mistro/web", "exec", "vite", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]

@@ -1,5 +1,5 @@
 {
-  "name": "@carmela/api",
+  "name": "@mistro/api",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,12 +7,13 @@
     "build": "tsc --noEmit",
     "auth:schema:reference": "auth generate --config src/auth.ts --output ../../packages/db/prisma/auth.reference.prisma --yes",
     "auth:create-admin": "auth create-admin --config src/auth.ts",
+    "workspace:provision": "tsx src/scripts/provisionWorkspace.ts",
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "better-auth": "1.7.25",
     "@better-auth/prisma-adapter": "1.7.25",
-    "@carmela/db": "workspace:*",
+    "@mistro/db": "workspace:*",
     "express": "^5.3.0"
   },
   "devDependencies": {

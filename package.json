@@ -1,11 +1,11 @@
 {
-  "name": "carmela",
+  "name": "mistro",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @carmela/web dev",
-    "build": "pnpm --filter @carmela/web build && pnpm --filter @carmela/api build",
-    "preview": "pnpm --filter @carmela/web preview"
+    "dev": "pnpm --filter @mistro/web dev",
+    "build": "pnpm --filter @mistro/web build && pnpm --filter @mistro/api build",
+    "preview": "pnpm --filter @mistro/web preview"
   },
   "devDependencies": {
     "@playwright/test": "^1.51.0"

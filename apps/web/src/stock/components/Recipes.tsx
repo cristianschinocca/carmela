@@ -5,11 +5,11 @@ import { compatibleUnits, convertQuantity, formatQuantity, validQuantity } from 
 import type { Recipe, StockCatalog, Unit } from "../types";
 import { Empty, inputClass, labelClass, RowActions, SectionHeader, StockListItem, StockModal } from "./StockUI";
 
-type Props = { catalog: StockCatalog; products: Product[]; update: (next: StockCatalog) => Promise<boolean>; notify: (message: string) => void };
+type Props = { catalog: StockCatalog; products: Product[]; update: (next: StockCatalog) => Promise<boolean>; notify: (message: string) => void; server?: boolean };
 type Draft = { id: string; name: string; productId: string; ingredients: { ingredientId: string; quantity: string; unit: Unit | "" }[] };
 const newDraft = (): Draft => ({ id: crypto.randomUUID(), name: "", productId: "", ingredients: [{ ingredientId: "", quantity: "", unit: "" }] });
 
-export function Recipes({ catalog, products, update, notify }: Props) {
+export function Recipes({ catalog, products, update, notify, server = false }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
   const save = async (event: FormEvent) => {
@@ -23,7 +23,7 @@ export function Recipes({ catalog, products, update, notify }: Props) {
     const recipe: Recipe = { id: draft.id, name: draft.name.trim(), productId, ingredients };
     const recipes = catalog.recipes.some((item) => item.id === recipe.id) ? catalog.recipes.map((item) => item.id === recipe.id ? recipe : item) : [...catalog.recipes, recipe];
     if (await update({ ...catalog, recipes })) { setDraft(null); notify("Receta guardada."); }
-    else setError("No se pudo guardar. Revisá el almacenamiento del navegador y volvé a intentar.");
+    else setError("No se pudo guardar. Revisá el error y volvé a intentar.");
   };
   const remove = async (recipe: Recipe) => {
     if (window.confirm(`¿Eliminar la receta ${recipe.name}?`) && await update({ ...catalog, recipes: catalog.recipes.filter((item) => item.id !== recipe.id) })) notify("Receta eliminada.");
@@ -31,7 +31,7 @@ export function Recipes({ catalog, products, update, notify }: Props) {
   const edit = (recipe: Recipe) => { setError(""); setDraft({ ...recipe, productId: String(recipe.productId), ingredients: recipe.ingredients.map((line) => ({ ...line, unit: line.unit ?? catalog.ingredients.find((item) => item.id === line.ingredientId)?.unit ?? "", quantity: String(line.quantity) })) }); };
   return <section className="overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--surface)]">
     <SectionHeader icon={ChefHat} title="Recetas" description="Definí los insumos necesarios para preparar una unidad de cada producto." action="Nueva receta" onAdd={() => { setError(""); setDraft(newDraft()); }} />
-    <p className="border-b border-[var(--border)] px-6 py-3 !text-[11px]">Al cobrar una mesa, se descuentan los insumos según las recetas de los productos vendidos.</p>
+    <p className="border-b border-[var(--border)] px-6 py-3 !text-[11px]">{server ? "El descuento automático al cobrar todavía no está conectado." : "Al cobrar una mesa, se descuentan los insumos según las recetas de los productos vendidos en este navegador."}</p>
     {!products.length || !catalog.ingredients.length ? <p className="border-b border-[var(--border)] px-6 py-3 text-xs">Para crear una receta necesitás al menos un producto y un insumo.</p> : null}
     {catalog.recipes.length ? <div className="grid gap-3 p-5 sm:p-6">{catalog.recipes.map((recipe) => <StockListItem key={recipe.id} icon={ChefHat} title={recipe.name} actions={<RowActions name={recipe.name} onEdit={() => edit(recipe)} onDelete={() => remove(recipe)} />}>
       <span>Producto: <strong className="text-[var(--text)]">{products.find((product) => product.id === recipe.productId)?.name || "Producto eliminado · actualizá la receta"}</strong></span>

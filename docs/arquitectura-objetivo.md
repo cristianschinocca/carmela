@@ -1,6 +1,6 @@
 # Arquitectura objetivo
 
-La aplicación de demostración todavía usa datos locales en el navegador. Ya existe una API Express con Better Auth, una base PostgreSQL central y otra base de ejemplo para Carmela. El login y los módulos operativos del frontend aún no consumen la API. Las tecnologías no instaladas se describen como objetivos.
+Mistro es el sistema; Carmela es la cafetería de demostración. La aplicación todavía usa datos locales en el navegador. Ya existe una API Express con Better Auth, una base PostgreSQL central y otra base de ejemplo para Carmela. El login y los módulos operativos del frontend aún no consumen la API. Las tecnologías no instaladas se describen como objetivos.
 
 ## Organización
 

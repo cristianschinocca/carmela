@@ -22,15 +22,17 @@ import {
 } from "../../motion";
 
 type Props = {
+  error?: string;
+  busy?: boolean;
   products: Product[];
   categories: string[];
-  onSave: (product: Product) => void;
-  onDelete: (id: number) => void;
-  onReorder: (fromId: number, toId: number) => void;
-  onAddCategory: (name: string) => boolean;
-  onReorderCategory: (from: string, to: string) => void;
-  onRenameCategory: (current: string, next: string) => boolean;
-  onDeleteCategory: (name: string) => boolean;
+  onSave: (product: Product) => Promise<boolean>;
+  onDelete: (id: number) => Promise<boolean>;
+  onReorder: (fromId: number, toId: number) => Promise<boolean>;
+  onAddCategory: (name: string) => Promise<boolean>;
+  onReorderCategory: (from: string, to: string) => Promise<boolean>;
+  onRenameCategory: (current: string, next: string) => Promise<boolean>;
+  onDeleteCategory: (name: string) => Promise<boolean>;
 };
 
 const emptyProduct = (categories: string[]): Product => ({
@@ -45,6 +47,8 @@ const emptyProduct = (categories: string[]): Product => ({
 });
 
 export function ProductManager({
+  error,
+  busy,
   products,
   categories,
   onSave,
@@ -103,17 +107,17 @@ export function ProductManager({
     setConfirmDelete(false);
     setEditing({ ...product });
   };
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!editing) return;
-    onSave({
+    const saved = await onSave({
       ...editing,
-      id: editing.id || Date.now(),
+      id: editing.id,
       name: editing.name.trim(),
       description: editing.description.trim(),
       image: editing.image.trim() || photos.coffee,
     });
-    setEditing(null);
+    if (saved) setEditing(null);
   };
   const drop = (event: DragEvent, id: number) => {
     event.preventDefault();
@@ -122,7 +126,7 @@ export function ProductManager({
   };
   return (
     <>
-      <section className="panel product-manager">
+      <section className="panel product-manager" aria-busy={busy}>
         <div className="manager-toolbar">
           <label className="search">
             <Search size={18} />
@@ -191,7 +195,7 @@ export function ProductManager({
               <Tags size={16} /> Categorías{" "}
               <span className="count-pill">{categories.length}</span>
             </button>
-            <button className="button primary" onClick={startCreate}>
+            <button className="button primary" onClick={startCreate} disabled={busy || categories.length === 0} title={categories.length === 0 ? "Creá una categoría primero" : undefined}>
               <Plus size={17} /> Nuevo producto
             </button>
           </div>
@@ -249,6 +253,7 @@ export function ProductManager({
                     whileTap={press}
                     type="button"
                     role="switch"
+                    disabled={busy}
                     aria-checked={product.onlineVisible !== false}
                     aria-label={`${product.onlineVisible === false ? "Publicar" : "Ocultar"} ${product.name} en el menú digital`}
                     className="product-online-switch"
@@ -266,14 +271,14 @@ export function ProductManager({
                 <div className="order-controls">
                   <button
                     aria-label={`Subir ${product.name}`}
-                    disabled={index === 0}
+                    disabled={busy || index === 0}
                     onClick={() => onReorder(product.id, visible[index - 1].id)}
                   >
                     <ChevronUp size={15} />
                   </button>
                   <button
                     aria-label={`Bajar ${product.name}`}
-                    disabled={index === visible.length - 1}
+                    disabled={busy || index === visible.length - 1}
                     onClick={() => onReorder(product.id, visible[index + 1].id)}
                   >
                     <ChevronDown size={15} />
@@ -301,12 +306,11 @@ export function ProductManager({
           >
             <Search size={28} />
             <h3>No encontramos productos</h3>
-            <p>Probá con otro término o creá uno nuevo.</p>
+            <p>{categories.length === 0 ? "Creá una categoría para agregar productos." : "Probá con otro término o creá uno nuevo."}</p>
           </motion.div>
         )}
         <p className="help-copy">
-          Los cambios se guardan en este navegador y se reflejan en el POS y el
-          menú digital.
+          Los cambios se guardan en el catálogo de esta cafetería.
         </p>
       </section>
 
@@ -340,6 +344,7 @@ export function ProductManager({
                   {editing.id ? "Editar producto" : "Nuevo producto"}
                 </h2>
                 <p>Configurá los datos del producto.</p>
+                {error && <p role="alert">{error}</p>}
               </div>
               <form className="product-form" onSubmit={submit}>
                 <label className="field">
@@ -423,7 +428,7 @@ export function ProductManager({
                   />
                   <span>
                     <strong>Disponible para la venta</strong>
-                    <small>Permite cargar el producto en el punto de venta.</small>
+                    <small>Estado guardado para la venta.</small>
                   </span>
                 </label>
                 <label className="availability-control">
@@ -439,7 +444,7 @@ export function ProductManager({
                   />
                   <span>
                     <strong>Visible en el menú digital</strong>
-                    <small>Se muestra en el menú cuando está disponible para la venta.</small>
+                    <small>Preferencia guardada para el menú digital.</small>
                   </span>
                 </label>
                 <div className="form-actions">
@@ -463,9 +468,9 @@ export function ProductManager({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          onDelete(editing.id);
-                          setEditing(null);
+                        disabled={busy}
+                        onClick={async () => {
+                          if (await onDelete(editing.id)) setEditing(null);
                         }}
                       >
                         Sí, eliminar
@@ -480,7 +485,7 @@ export function ProductManager({
                       >
                         Cancelar
                       </button>
-                      <button className="button primary">
+                      <button className="button primary" disabled={busy}>
                         {editing.id ? "Guardar cambios" : "Crear producto"}
                       </button>
                     </>
@@ -502,6 +507,8 @@ export function ProductManager({
             onReorder={onReorderCategory}
             onRename={onRenameCategory}
             onDelete={onDeleteCategory}
+            error={error}
+            busy={busy}
           />
         )}
       </AnimatePresence>
@@ -517,32 +524,35 @@ function CategoryManager({
   onReorder,
   onRename,
   onDelete,
+  error,
+  busy,
 }: {
   categories: string[];
   products: Product[];
   onClose: () => void;
-  onAdd: (name: string) => boolean;
-  onReorder: (from: string, to: string) => void;
-  onRename: (current: string, next: string) => boolean;
-  onDelete: (name: string) => boolean;
+  onAdd: (name: string) => Promise<boolean>;
+  onReorder: (from: string, to: string) => Promise<boolean>;
+  onRename: (current: string, next: string) => Promise<boolean>;
+  onDelete: (name: string) => Promise<boolean>;
+  error?: string;
+  busy?: boolean;
 }) {
   const [newName, setNewName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [draggingCategory, setDraggingCategory] = useState<string | null>(null);
   const [dropCategory, setDropCategory] = useState<string | null>(null);
-  const moveCategory = (category: string, target: string) => {
+  const moveCategory = async (category: string, target: string) => {
     const position = categories.indexOf(target);
     if (category === target || position < 0) return;
-    onReorder(category, target);
-    setMessage(`${category} ahora está en la posición ${position + 1} de ${categories.length}.`);
+    if (await onReorder(category, target)) setMessage(`${category} ahora está en la posición ${position + 1} de ${categories.length}.`);
   };
-  const add = (event: FormEvent) => {
+  const add = async (event: FormEvent) => {
     event.preventDefault();
-    if (onAdd(newName.trim())) {
+    if (await onAdd(newName.trim())) {
       setNewName("");
       setMessage("Categoría creada.");
-    } else setMessage("Ese nombre ya existe.");
+    } else setMessage("No se pudo crear la categoría.");
   };
   return (
     <motion.div
@@ -571,6 +581,7 @@ function CategoryManager({
         <div className="editor-heading">
           <h2 id="category-title">Categorías</h2>
           <p>Creá y ordená las categorías del catálogo.</p>
+          {error && <p role="alert">{error}</p>}
         </div>
         <form className="new-category" onSubmit={add}>
           <input
@@ -580,7 +591,7 @@ function CategoryManager({
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
           />
-          <button className="button primary">
+          <button className="button primary" disabled={busy}>
             <Plus size={16} /> Crear
           </button>
         </form>
@@ -622,19 +633,19 @@ function CategoryManager({
                   {used} producto{used === 1 ? "" : "s"}
                 </span>
                 <div className="category-order-controls" aria-label={`Orden de ${category}`}>
-                  <button type="button" aria-label={`Subir categoría ${category}`} title="Subir" disabled={index === 0} onClick={() => moveCategory(category, categories[index - 1])}><ChevronUp size={15} /></button>
-                  <button type="button" aria-label={`Bajar categoría ${category}`} title="Bajar" disabled={index === categories.length - 1} onClick={() => moveCategory(category, categories[index + 1])}><ChevronDown size={15} /></button>
+                  <button type="button" aria-label={`Subir categoría ${category}`} title="Subir" disabled={busy || index === 0} onClick={() => moveCategory(category, categories[index - 1])}><ChevronUp size={15} /></button>
+                  <button type="button" aria-label={`Bajar categoría ${category}`} title="Bajar" disabled={busy || index === categories.length - 1} onClick={() => moveCategory(category, categories[index + 1])}><ChevronDown size={15} /></button>
                 </div>
                 <button
                   className="icon-btn"
                   aria-label={`Guardar categoría ${category}`}
-                  disabled={(drafts[category] ?? category).trim() === category}
-                  onClick={() => {
+                  disabled={busy || (drafts[category] ?? category).trim() === category}
+                  onClick={async () => {
                     const next = (drafts[category] ?? category).trim();
-                    if (onRename(category, next)) {
+                    if (await onRename(category, next)) {
                       setDrafts({});
                       setMessage("Categoría actualizada.");
-                    } else setMessage("Ese nombre ya existe.");
+                    } else setMessage("No se pudo actualizar la categoría.");
                   }}
                 >
                   <Pencil size={15} />
@@ -642,15 +653,14 @@ function CategoryManager({
                 <button
                   className="icon-btn danger-icon"
                   aria-label={`Eliminar categoría ${category}`}
-                  disabled={used > 0 || categories.length === 1}
+                  disabled={busy || used > 0 || categories.length === 1}
                   title={
                     used > 0
                       ? "Mové primero sus productos"
                       : "Eliminar categoría"
                   }
-                  onClick={() => {
-                    onDelete(category);
-                    setMessage("Categoría eliminada.");
+                  onClick={async () => {
+                    if (await onDelete(category)) setMessage("Categoría eliminada.");
                   }}
                 >
                   <Trash2 size={15} />

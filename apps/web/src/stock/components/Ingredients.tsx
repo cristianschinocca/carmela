@@ -23,7 +23,7 @@ export function Ingredients({ catalog, update, notify }: Props) {
     const item: Ingredient = { ...draft, name, quantity, minimum };
     const ingredients = catalog.ingredients.some((ingredient) => ingredient.id === item.id) ? catalog.ingredients.map((ingredient) => ingredient.id === item.id ? item : ingredient) : [...catalog.ingredients, item];
     if (await update({ ...catalog, ingredients })) { setDraft(null); notify("Insumo guardado."); }
-    else setError("No se pudo guardar. Revisá el almacenamiento del navegador y volvé a intentar.");
+    else setError("No se pudo guardar. Revisá el error y volvé a intentar.");
   };
   const remove = async (ingredient: Ingredient) => {
     if (ingredientInUse(catalog, ingredient.id)) { notify("Quitá este insumo de las recetas antes de eliminarlo."); return; }

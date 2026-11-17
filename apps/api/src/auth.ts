@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { admin } from "better-auth/plugins";
-import { centralDb } from "@carmela/db/central";
+import { centralDb } from "@mistro/db/central";
 import { config } from "./config.js";
 
 const trustedOrigins = [config.frontendOrigin];

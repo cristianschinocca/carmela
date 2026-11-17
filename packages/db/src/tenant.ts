@@ -1,20 +1,23 @@
-import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient, Prisma } from "./generated/tenant/client.js";
 
-const pools = new Map<string, Pool>();
+const databases = new Map<string, PrismaClient>();
 
-export function tenantDatabase(key: string): Pool {
+export function tenantDatabase(key: string): PrismaClient {
   if (!/^[a-z][a-z0-9_]*$/.test(key)) throw new Error("Clave de base de datos inválida");
-  const existing = pools.get(key);
+  const existing = databases.get(key);
   if (existing) return existing;
 
   const url = process.env[`TENANT_DB_${key.toUpperCase()}_URL`];
   if (!url) throw new Error(`No hay base configurada para ${key}`);
-  const pool = new Pool({ connectionString: url, max: 2 });
-  pools.set(key, pool);
-  return pool;
+  const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, max: 2 }) });
+  databases.set(key, client);
+  return client;
 }
 
 export async function closeDatabases(): Promise<void> {
-  await Promise.all([...pools.values()].map((pool) => pool.end()));
-  pools.clear();
+  await Promise.all([...databases.values()].map((client) => client.$disconnect()));
+  databases.clear();
 }
+
+export { Prisma };

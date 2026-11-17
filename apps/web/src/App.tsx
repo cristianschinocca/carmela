@@ -18,7 +18,7 @@ import {
 } from "./data";
 import TablePOS from "./components/pos/TablePOS";
 import { PaidTablesDialog } from "./components/pos/PaidTablesDialog";
-import { ProductManager } from "./components/products/ProductManager";
+import { ServerCatalog } from "./features/catalog/ServerCatalog";
 import { StockWorkspace } from "./stock/StockWorkspace";
 import { StockAlerts } from "./components/stock/StockAlerts";
 import { loadStock, productsWithStock, type Stock } from "./stores/inventory";
@@ -30,7 +30,9 @@ import { cashMovementImpact, isCashExpense, type CashExpense } from "./stores/ca
 import { PublicMenu } from "./components/menu/PublicMenu";
 import { LoginPage } from "./components/auth/LoginPage";
 import { authClient, isSuperadmin, type SessionUser } from "./features/auth/authClient";
+import { clearOfflineAccess, clearPendingSignOut, hasPendingSignOut, markPendingSignOut } from "./features/auth/offlineAccess";
 import { SuperadminPage } from "./features/superadmin/SuperadminPage";
+import { SuperadminLoginPage } from "./features/superadmin/SuperadminLoginPage";
 import { useDashboardTheme } from "./hooks/useDashboardTheme";
 import {
   modalVariants,
@@ -53,16 +55,20 @@ import {
 
 export function App() {
   const [sessionMember, setSessionMember] = useState<SessionUser | null>(null);
+  const [offlineMode, setOfflineMode] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [products, setProducts] = useState<Product[]>(loadProducts);
+  const [products] = useState<Product[]>(loadProducts);
   const [stock, setStock] = useState<Stock>(loadStock);
-  const [categoryList, setCategoryList] = useState<string[]>(loadCategories);
+  const [categoryList] = useState<string[]>(loadCategories);
   const [page, setPage] = useState("Resumen");
   const [cashOpen, setCashOpen] = useState(false);
   const [salesOpen, setSalesOpen] = useState(false);
   const [cashMode, setCashMode] = useState<"movements" | "count">("movements");
   const [publicView, setPublicView] = useState(location.hash === "#menu");
+  useEffect(() => {
+    document.title = publicView ? "Carmela — Salumería y café" : "Mistro — Gestión de cafeterías";
+  }, [publicView]);
   const [publicThemeActive, setPublicThemeActive] = useState(
     location.hash === "#menu",
   );
@@ -75,18 +81,37 @@ export function App() {
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>(loadCashExpenses);
   useEffect(() => {
     let active = true;
-    void authClient.getSession().then(({ data }) => {
-      if (active) {
-        setSessionMember(data?.user ?? null);
-        if (isSuperadmin(data?.user ?? null)) setPage("Superadmin");
-      }
-    }).catch(() => {
-      if (active) setSessionMember(null);
-    }).finally(() => {
-      if (active) setSessionLoading(false);
-    });
-    return () => { active = false; };
+    const finishSignOut = async () => {
+      if (!hasPendingSignOut() || !navigator.onLine) return;
+      try {
+        const result = await authClient.signOut();
+        if (!result.error) clearPendingSignOut();
+      } catch { /* Se intentará de nuevo cuando vuelva la conexión. */ }
+    };
+    if (hasPendingSignOut()) {
+      setSessionLoading(false);
+      void finishSignOut();
+    } else {
+      void authClient.getSession().then(({ data }) => {
+        if (active) {
+          setSessionMember(data?.user ?? null);
+          if (isSuperadmin(data?.user ?? null)) setPage("Superadmin");
+        }
+      }).catch(() => {
+        if (active) setSessionMember(null);
+      }).finally(() => {
+        if (active) setSessionLoading(false);
+      });
+    }
+    window.addEventListener("online", finishSignOut);
+    return () => { active = false; window.removeEventListener("online", finishSignOut); };
   }, []);
+  useEffect(() => {
+    if (sessionLoading || publicView) return;
+    if (sessionMember && isSuperadmin(sessionMember) && !offlineMode && location.pathname !== "/superadmin") {
+      history.replaceState(history.state, "", "/superadmin" + location.search + location.hash);
+    }
+  }, [sessionLoading, sessionMember, offlineMode, publicView]);
   useEffect(() => {
     localStorage.setItem(PRODUCT_STORAGE, JSON.stringify(products));
   }, [products]);
@@ -112,25 +137,33 @@ export function App() {
     return () => window.removeEventListener("hashchange", syncPublicView);
   }, []);
   const go = (p: string) => {
+    if (offlineMode && p !== "Punto de venta") return;
     if (isSuperadmin(sessionMember) && p !== "Superadmin") return;
     if (p === "Superadmin" && !isSuperadmin(sessionMember)) return;
     setPage(p);
     setSide(false);
     setProfileOpen(false);
   };
-  const login = (user: SessionUser) => {
+  const login = (user: SessionUser, offline = false) => {
     setSessionMember(user);
-    setPage(isSuperadmin(user) ? "Superadmin" : "Resumen");
+    setOfflineMode(offline);
+    setPage(offline ? "Punto de venta" : isSuperadmin(user) ? "Superadmin" : "Resumen");
   };
   const logout = async () => {
     try {
-      const result = await authClient.signOut();
-      if (result.error) throw new Error(result.error.message);
+      if (offlineMode) markPendingSignOut();
+      else {
+        const result = await authClient.signOut();
+        if (result.error) throw new Error(result.error.message);
+        clearPendingSignOut();
+      }
     } catch {
       toast("No se pudo cerrar la sesión. Intentá nuevamente.");
       return;
     }
+    clearOfflineAccess();
     setSessionMember(null);
+    setOfflineMode(false);
     setProfileOpen(false);
     setSide(false);
     setCashOpen(false);
@@ -155,82 +188,8 @@ export function App() {
       toast("Preferencias actualizadas en esta vista de demostración.");
     }, 650);
   };
-  const saveProduct = (product: Product) => {
-    setProducts((current) =>
-      current.some((item) => item.id === product.id)
-        ? current.map((item) => (item.id === product.id ? product : item))
-        : [...current, product],
-    );
-    toast(
-      product.id && products.some((item) => item.id === product.id)
-        ? "Producto actualizado."
-        : "Producto creado.",
-    );
-  };
-  const deleteProduct = (id: number) => {
-    setProducts((current) => current.filter((item) => item.id !== id));
-    toast("Producto eliminado de este navegador.");
-  };
   const sellableProducts = productsWithStock(products, stock);
-  const reorderProducts = (fromId: number, toId: number) =>
-    setProducts((current) => {
-      const from = current.findIndex((item) => item.id === fromId),
-        to = current.findIndex((item) => item.id === toId);
-      if (from < 0 || to < 0) return current;
-      const next = [...current];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  const addCategory = (name: string) => {
-    if (
-      !name ||
-      categoryList.some((item) => item.toLowerCase() === name.toLowerCase())
-    )
-      return false;
-    setCategoryList((current) => [...current, name]);
-    return true;
-  };
-  const reorderCategories = (fromName: string, toName: string) => {
-    setCategoryList((current) => {
-      const from = current.indexOf(fromName);
-      const to = current.indexOf(toName);
-      if (from < 0 || to < 0 || from === to) return current;
-      const next = [...current];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
-  const renameCategory = (currentName: string, nextName: string) => {
-    if (
-      !nextName ||
-      categoryList.some(
-        (item) =>
-          item !== currentName && item.toLowerCase() === nextName.toLowerCase(),
-      )
-    )
-      return false;
-    setCategoryList((current) =>
-      current.map((item) => (item === currentName ? nextName : item)),
-    );
-    setProducts((current) =>
-      current.map((item) =>
-        item.category === currentName ? { ...item, category: nextName } : item,
-      ),
-    );
-    return true;
-  };
-  const deleteCategory = (name: string) => {
-    if (
-      categoryList.length === 1 ||
-      products.some((item) => item.category === name)
-    )
-      return false;
-    setCategoryList((current) => current.filter((item) => item !== name));
-    return true;
-  };
-  const visiblePage = isSuperadmin(sessionMember) ? "Superadmin" : page;
+  const visiblePage = offlineMode ? "Punto de venta" : isSuperadmin(sessionMember) ? "Superadmin" : page;
   return (
     <>
       <AnimatePresence
@@ -252,19 +211,21 @@ export function App() {
           />
         ) : sessionLoading ? (
           <main className="grid min-h-dvh place-items-center" role="status">Cargando sesión…</main>
+        ) : location.pathname === "/superadmin" && !isSuperadmin(sessionMember) ? (
+          <SuperadminLoginPage currentUser={sessionMember} onLogin={login} onSwitchAccount={() => void logout()} />
         ) : !sessionMember ? (
           <LoginPage onLogin={login} onOpenMenu={openMenu} />
         ) : (
           <motion.div
             key="dashboard"
-            className="dashboard-frame"
+            className={isSuperadmin(sessionMember) ? "dashboard-frame superadmin-frame" : "dashboard-frame"}
             variants={pageVariants}
             initial="initial"
             animate="animate"
             exit="exit"
           >
             <div className="app-shell">
-            <WorkspaceSidebar side={side} profileOpen={profileOpen} setProfileOpen={setProfileOpen} sessionMember={sessionMember} page={visiblePage} go={go} logout={logout} darkMode={darkMode} setDarkMode={setDarkMode} toast={toast} />
+            <WorkspaceSidebar side={side} profileOpen={profileOpen} setProfileOpen={setProfileOpen} sessionMember={sessionMember} offlineMode={offlineMode} page={visiblePage} go={go} logout={logout} darkMode={darkMode} setDarkMode={setDarkMode} toast={toast} />
             <AnimatePresence>
               {side && (
                 <motion.div
@@ -279,6 +240,7 @@ export function App() {
             </AnimatePresence>
             <div className="main-shell">
                 <main className={visiblePage === "Punto de venta" ? "pos-page" : undefined}>
+                {offlineMode && <div className="mx-4 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-[var(--text)]" role="status">POS sin conexión · Los cambios quedan en este dispositivo. Todavía no se sincronizan con el servidor.</div>}
                 <button
                   className="icon-btn mobile-toggle floating-menu"
                   aria-label="Abrir navegación"
@@ -358,17 +320,7 @@ export function App() {
                         onToast={toast}
                       />
                     ) : visiblePage === "Productos" ? (
-                      <ProductManager
-                        products={products}
-                        categories={categoryList}
-                        onSave={saveProduct}
-                        onDelete={deleteProduct}
-                        onReorder={reorderProducts}
-                        onAddCategory={addCategory}
-                        onReorderCategory={reorderCategories}
-                        onRenameCategory={renameCategory}
-                        onDeleteCategory={deleteCategory}
-                      />
+                      <ServerCatalog key={sessionMember.id} />
                     ) : visiblePage === "Stock" ? (
                       <StockWorkspace products={products} stock={stock} onStockChange={setStock} onToast={toast} />
                     ) : visiblePage === "Menú digital" ? (
@@ -389,7 +341,7 @@ export function App() {
               </main>
             </div>
               </div>
-            {!isSuperadmin(sessionMember) && <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones">
+            {!offlineMode && !isSuperadmin(sessionMember) && <aside className="workspace-utility-rail" aria-label="Panel lateral de opciones">
               <StockAlerts products={products} stock={stock} onOpenStock={() => go("Stock")} />
               <div className="utility-rail-divider" role="separator" />
               <button className="utility-rail-button" aria-label="Abrir caja" aria-pressed={cashOpen && cashMode === "movements"} title="Caja" onClick={() => { setCashMode("movements"); setCashOpen(true); }}><Wallet size={19} /></button>

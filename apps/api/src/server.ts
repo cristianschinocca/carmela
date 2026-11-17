@@ -1,16 +1,24 @@
 import express from "express";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
-import { centralDb } from "@carmela/db/central";
-import { closeDatabases } from "@carmela/db/tenant";
+import { centralDb } from "@mistro/db/central";
+import { closeDatabases } from "@mistro/db/tenant";
 import { config } from "./config.js";
 import { authorizedWorkspace, checkWorkspaceDatabase, listWorkspaces } from "./db/workspaces.js";
+import { adminAccounts } from "./admin/accounts.js";
+import { catalogRoutes } from "./catalog/routes.js";
+import { posRoutes } from "./pos/routes.js";
+import { inventoryRoutes } from "./inventory/routes.js";
 
 const app = express();
 app.disable("x-powered-by");
 app.get("/api/health", (_request, response) => response.json({ ok: true }));
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use(express.json({ limit: "100kb" }));
+app.use("/api/admin", adminAccounts);
+app.use("/api/workspaces/:workspaceId/catalog", catalogRoutes);
+app.use("/api/workspaces/:workspaceId/inventory", inventoryRoutes);
+app.use("/api/workspaces/:workspaceId/pos", posRoutes);
 
 async function sessionFor(cookie: string | undefined) {
   return auth.api.getSession({ headers: new Headers({ cookie: cookie ?? "" }) });

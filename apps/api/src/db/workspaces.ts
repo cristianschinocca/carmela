@@ -1,11 +1,11 @@
-import { centralDb } from "@carmela/db/central";
-import { tenantDatabase } from "@carmela/db/tenant";
+import { centralDb } from "@mistro/db/central";
+import { tenantDatabase } from "@mistro/db/tenant";
 
 export type Workspace = {
   id: string;
   name: string;
   database_key: string;
-  status: "active" | "disabled";
+  status: "pending" | "active" | "disabled";
 };
 
 export async function listWorkspaces(userId: string, isAdmin: boolean): Promise<Omit<Workspace, "database_key">[]> {
@@ -34,5 +34,11 @@ export async function authorizedWorkspace(userId: string, id: string): Promise<W
 }
 
 export async function checkWorkspaceDatabase(workspace: Workspace): Promise<void> {
-  await tenantDatabase(workspace.database_key).query("SELECT 1");
+  const identity = await tenantDatabase(workspace.database_key).workspaceIdentity.findUnique({
+    where: { id: "workspace" },
+    select: { workspaceId: true },
+  });
+  if (identity?.workspaceId !== workspace.id) {
+    throw new Error(`La base operativa de ${workspace.id} no corresponde a la cafetería autorizada`);
+  }
 }

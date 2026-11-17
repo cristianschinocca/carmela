@@ -1,0 +1,182 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../../src/generated/tenant"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Vincula esta base operativa con una única cafetería del registro central.
+model WorkspaceIdentity {
+  id          String   @id @default("workspace")
+  workspaceId String   @unique @map("workspace_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("workspace_identity")
+}
+
+model CatalogCategory {
+  id       String           @id @default(uuid()) @db.Uuid
+  name     String           @unique @db.VarChar(120)
+  position Int              @default(0)
+  products CatalogProduct[]
+
+  @@map("catalog_categories")
+}
+
+model CatalogImport {
+  key         String   @id @db.Uuid
+  payloadHash String   @map("payload_hash") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("catalog_imports")
+}
+
+model CatalogProduct {
+  id            String          @id @default(uuid()) @db.Uuid
+  legacyId      BigInt          @unique @default(dbgenerated("nextval('catalog_product_legacy_id_seq'::regclass)")) @map("legacy_id")
+  name          String          @db.VarChar(120)
+  categoryId    String          @map("category_id") @db.Uuid
+  category      CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  description   String          @default("") @db.VarChar(2000)
+  price         Int
+  image         String          @default("") @db.VarChar(2048)
+  available     Boolean         @default(true)
+  onlineVisible Boolean         @default(true) @map("online_visible")
+  position      Int             @default(0)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  stock         ProductStock?
+  stockMovements ProductStockMovement[]
+  tableItems DiningTableItem[]
+  recipe InventoryRecipe?
+
+  @@index([categoryId, position])
+  @@map("catalog_products")
+}
+
+model FloorSector {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(120)
+  position Int @default(0)
+  tables DiningTable[]
+
+  @@map("floor_sectors")
+}
+
+model DiningTable {
+  id String @id @default(uuid()) @db.Uuid
+  sectorId String @map("sector_id") @db.Uuid
+  sector FloorSector @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  number Int
+  guests Int @default(0)
+  billRequested Boolean @default(false) @map("bill_requested")
+  discount Int @default(0)
+  version Int @default(0)
+  items DiningTableItem[]
+
+  @@unique([sectorId, number])
+  @@map("dining_tables")
+}
+
+model DiningTableItem {
+  id String @id @default(uuid()) @db.Uuid
+  tableId String @map("table_id") @db.Uuid
+  table DiningTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  productId String @map("product_id") @db.Uuid
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity Int
+  unitPrice Int @map("unit_price")
+  unitDiscount Int @default(0) @map("unit_discount")
+  note String @default("") @db.VarChar(500)
+
+  @@index([tableId])
+  @@map("dining_table_items")
+}
+
+model ProductStock {
+  productId String @id @map("product_id") @db.Uuid
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity Int @default(0)
+  minimum Int @default(0)
+  enabled Boolean @default(true)
+  version Int @default(0)
+
+  @@map("product_stock")
+}
+
+model ProductStockMovement {
+  id String @id @db.Uuid
+  payloadHash String @map("payload_hash") @db.VarChar(64)
+  productId String @map("product_id") @db.Uuid
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  kind String @db.VarChar(16)
+  amount Int
+  balance Int
+  note String @default("") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([productId, createdAt])
+  @@map("product_stock_movements")
+}
+
+model InventoryIngredient {
+  id String @id @default(uuid()) @db.Uuid
+  name String @unique @db.VarChar(80)
+  unit String @db.VarChar(10)
+  quantity Decimal @default(0) @db.Decimal(18, 6)
+  minimum Decimal @default(0) @db.Decimal(18, 6)
+  version Int @default(0)
+  recipeLines InventoryRecipeLine[]
+  @@map("inventory_ingredients")
+}
+
+model InventoryRecipe {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(80)
+  productId String @unique @map("product_id") @db.Uuid
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  version Int @default(0)
+  ingredients InventoryRecipeLine[]
+  @@map("inventory_recipes")
+}
+
+model InventoryRecipeLine {
+  recipeId String @map("recipe_id") @db.Uuid
+  recipe InventoryRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredientId String @map("ingredient_id") @db.Uuid
+  ingredient InventoryIngredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantity Decimal @db.Decimal(18, 6)
+  unit String @db.VarChar(10)
+  @@id([recipeId, ingredientId])
+  @@map("inventory_recipe_lines")
+}
+
+
+model Sale {
+  id String @id @db.Uuid
+  tableId String @map("table_id") @db.Uuid
+  tableName String @map("table_name") @db.VarChar(120)
+  payloadHash String @map("payload_hash") @db.VarChar(64)
+  guests Int
+  subtotal BigInt
+  discount BigInt
+  total BigInt
+  payment String @db.VarChar(20)
+  items Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([createdAt])
+  @@map("sales")
+}
+
+model IngredientSaleMovement {
+  saleId String @map("sale_id") @db.Uuid
+  ingredientId String @map("ingredient_id") @db.Uuid
+  quantity Decimal @db.Decimal(18, 6)
+  unit String @db.VarChar(10)
+  @@id([saleId, ingredientId])
+  @@map("ingredient_sale_movements")
+}
