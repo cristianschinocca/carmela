@@ -5,11 +5,11 @@ type Props = {
   tables: Table[]; setTables: Dispatch<SetStateAction<Table[]>>; sectors: Sector[]; setSectors: Dispatch<SetStateAction<Sector[]>>;
   selected: Table | null; setSelectedId: Dispatch<SetStateAction<string | null>>; activeArea: Area;
   setActiveArea: Dispatch<SetStateAction<Area>>; setLayoutMode: Dispatch<SetStateAction<boolean>>;
-  areaCounts: Record<string, number>; isFreeform: boolean; boardHeight: number; onToast: (message: string) => void;
+  protectedTableIds?: ReadonlySet<string>; areaCounts: Record<string, number>; isFreeform: boolean; boardHeight: number; onToast: (message: string) => void;
 };
 
 /** Creación, orden y eliminación de mesas y sectores del plano. */
-export function useFloorEditor({ tables, setTables, sectors, setSectors, selected, setSelectedId, activeArea, setActiveArea, setLayoutMode, areaCounts, isFreeform, boardHeight, onToast }: Props) {
+export function useFloorEditor({ tables, setTables, sectors, setSectors, selected, setSelectedId, activeArea, setActiveArea, setLayoutMode, areaCounts, isFreeform, boardHeight, onToast, protectedTableIds }: Props) {
   const [sectorName, setSectorName] = useState("");
   const [addingSector, setAddingSector] = useState(false);
   const [addingTables, setAddingTables] = useState(false);
@@ -62,7 +62,7 @@ export function useFloorEditor({ tables, setTables, sectors, setSectors, selecte
     onToast(`${quantity} ${quantity === 1 ? "mesa agregada" : "mesas agregadas"} en ${sector.label}.`);
   };
   const selectedTables = tables.filter((table) => selectedTableIds.includes(table.id));
-  const occupiedSelection = selectedTables.filter((table) => table.items.length || table.billRequested);
+  const occupiedSelection = selectedTables.filter((table) => table.items.length || table.billRequested || protectedTableIds?.has(table.id));
   const deleteSelectedTables = () => {
     if (!selectedTables.length || occupiedSelection.length) return;
     const ids = new Set(selectedTableIds);
@@ -89,6 +89,7 @@ export function useFloorEditor({ tables, setTables, sectors, setSectors, selecte
   };
   const moveSelectedArea = (area: Area) => {
     if (!selected || selected.area === area) return;
+    if (protectedTableIds?.has(selected.id)) { onToast("Cerrá la cuenta antes de cambiarla de sector."); return; }
     if (selected.area === "counter" || area === "counter") { onToast("Usá mover cuenta para trasladar consumos desde o hacia Mostrador."); return; }
     const target = sectors.find((item) => item.id === area)!;
     const targetCount = tables.filter((table) => table.area === area).length;

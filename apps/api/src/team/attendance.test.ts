@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { after, test } from "node:test";
+import { tenantDatabase, closeDatabases } from "@mistro/db/tenant";
+import { hashPin, pinLookup } from "./employee.js";
+import { clockEmployee, parseClock, reconcileClock } from "./attendance.js";
+import { verifyEmployeeCode } from "./verify.js";
+
+const key = process.env.ATTENDANCE_TEST_DB_KEY;
+test("valida el identificador y el PIN", () => {
+  assert.equal(parseClock({ id: randomUUID(), pin: "123" }), null);
+  assert.equal(parseClock({ id: "incorrecto", pin: "1234" }), null);
+  assert.notEqual(pinLookup("1234", "cafeteria-a"), pinLookup("1234", "cafeteria-b"));
+});
+test("fichaje transaccional, reintentos y límite de intentos", { skip: !key }, async () => {
+  const db = tenantDatabase(key!);
+  const workspace = randomUUID();
+  const person = await db.employee.create({ data: { name: "Prueba", role: "Mozo", active: true, pinHash: await hashPin("1937"), pinLookup: pinLookup("1937", workspace) } });
+  assert.equal(await verifyEmployeeCode(db, "verifier", Number(person.legacyId), "1937"), "valid");
+  for (let n = 0; n < 4; n++) assert.equal(await verifyEmployeeCode(db, "verifier", Number(person.legacyId), "0000"), "invalid");
+  assert.equal(await verifyEmployeeCode(db, "verifier", Number(person.legacyId), "0000"), "blocked");
+  assert.equal((await clockEmployee(db, workspace, "verifier", { id: randomUUID(), pin: "1937" })).status, "blocked");
+  const id = randomUUID();
+  const entry = await clockEmployee(db, workspace, "owner", { id, pin: "1937" });
+  assert.equal(entry.status, "completed");
+  if (entry.status === "completed") assert.equal(entry.kind, "Entrada");
+  const replay = await clockEmployee(db, workspace, "owner", { id, pin: "1937" });
+  assert.equal(replay.status, "completed");
+  if (replay.status === "completed") assert.equal(replay.replayed, true);
+  assert.equal((await db.employee.findUniqueOrThrow({ where: { id: person.id } })).clockedIn, true);
+  const cancelId = randomUUID();
+  assert.equal((await reconcileClock(db, "owner", cancelId)).status, "cancelled");
+  assert.equal((await clockEmployee(db, workspace, "owner", { id: cancelId, pin: "1937" })).status, "cancelled");
+  const exit = await clockEmployee(db, workspace, "owner", { id: randomUUID(), pin: "1937" });
+  assert.equal(exit.status, "completed");
+  if (exit.status === "completed") assert.equal(exit.kind, "Salida");
+  for (let n = 0; n < 4; n++) assert.equal((await clockEmployee(db, workspace, "attacker", { id: randomUUID(), pin: "0000" })).status, "invalid");
+  assert.equal((await clockEmployee(db, workspace, "attacker", { id: randomUUID(), pin: "0000" })).status, "blocked");
+  assert.equal((await clockEmployee(db, workspace, "attacker", { id: randomUUID(), pin: "1937" })).status, "blocked");
+  assert.equal((await db.employee.findUniqueOrThrow({ where: { id: person.id } })).clockedIn, false);
+});
+after(async () => { await closeDatabases(); });

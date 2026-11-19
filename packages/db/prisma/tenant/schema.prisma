@@ -60,7 +60,13 @@ model CatalogProduct {
 
 model FloorSector {
   id String @id @default(uuid()) @db.Uuid
+  clientKey String? @unique @map("client_key") @db.VarChar(120)
+  config Json?
   name String @db.VarChar(120)
+  description String @default("") @db.VarChar(160)
+  kind String @default("tables") @db.VarChar(10)
+  layout Json?
+  version Int @default(0)
   position Int @default(0)
   tables DiningTable[]
 
@@ -69,16 +75,24 @@ model FloorSector {
 
 model DiningTable {
   id String @id @default(uuid()) @db.Uuid
+  clientKey String? @unique @map("client_key") @db.VarChar(120)
   sectorId String @map("sector_id") @db.Uuid
   sector FloorSector @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   number Int
+  name String @default("") @db.VarChar(120)
+  x Float @default(0)
+  y Float @default(0)
+  slot Int?
   guests Int @default(0)
   billRequested Boolean @default(false) @map("bill_requested")
   discount Int @default(0)
+  operatorId String? @map("operator_id") @db.Uuid
+  operator Employee? @relation(fields: [operatorId], references: [id], onDelete: Restrict)
   version Int @default(0)
   items DiningTableItem[]
 
   @@unique([sectorId, number])
+  @@index([operatorId])
   @@map("dining_tables")
 }
 
@@ -166,9 +180,16 @@ model Sale {
   discount BigInt
   total BigInt
   payment String @db.VarChar(20)
+  cashShiftId String? @map("cash_shift_id") @db.Uuid
+  cashShift CashShift? @relation(fields: [cashShiftId], references: [id], onDelete: Restrict)
+  operatorId String? @map("operator_id") @db.Uuid
+  operator Employee? @relation("SaleOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  operatorName String? @map("operator_name") @db.VarChar(120)
   items Json
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@index([createdAt])
+  @@index([cashShiftId, payment])
+  @@index([operatorId])
   @@map("sales")
 }
 
@@ -179,4 +200,142 @@ model IngredientSaleMovement {
   unit String @db.VarChar(10)
   @@id([saleId, ingredientId])
   @@map("ingredient_sale_movements")
+}
+
+model TableAccountOperation {
+  id String @id @db.Uuid
+  tableId String @map("table_id") @db.Uuid
+  payloadHash String @map("payload_hash") @db.VarChar(64)
+  resultVersion Int @map("result_version")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([tableId, createdAt])
+  @@map("table_account_operations")
+}
+
+model FloorRevision {
+  id String @id @default("floor")
+  version Int @default(0)
+  @@map("floor_revision")
+}
+model FloorOperation {
+  id String @id @db.Uuid
+  payloadHash String @map("payload_hash") @db.VarChar(64)
+  resultVersion Int @map("result_version")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("floor_operations")
+}
+
+model AccountBatchOperation {
+  id String @id @db.Uuid
+  payloadHash String @map("payload_hash") @db.VarChar(64)
+  versions Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("account_batch_operations")
+}
+
+model Employee {
+  id String @id @default(uuid()) @db.Uuid
+  legacyId BigInt @unique @default(dbgenerated("nextval('employee_legacy_id_seq'::regclass)")) @map("legacy_id")
+  name String @db.VarChar(120)
+  role String @db.VarChar(20)
+  active Boolean @default(true)
+  pay Json?
+  pinHash String @map("pin_hash") @db.VarChar(200)
+  pinLookup String? @unique @map("pin_lookup") @db.Char(64)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  clockedIn Boolean @default(false) @map("clocked_in")
+  clockedInAt DateTime? @map("clocked_in_at") @db.Timestamptz(6)
+  version Int @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tables DiningTable[]
+  sales Sale[] @relation("SaleOperator")
+  @@index([active, name])
+  @@map("employees")
+}
+
+model AttendanceOperation {
+  id String @id @db.Uuid
+  status String @db.VarChar(12)
+  payloadHash String? @map("payload_hash") @db.VarChar(64)
+  employeeId String? @map("employee_id") @db.Uuid
+  employeeName String? @map("employee_name") @db.VarChar(120)
+  kind String? @db.VarChar(10)
+  occurredAt DateTime? @map("occurred_at") @db.Timestamptz(6)
+  actorId String @map("actor_id") @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([employeeId, occurredAt])
+  @@map("attendance_operations")
+}
+model AttendanceGuard {
+  id String @id @db.Char(64)
+  attempts Int @default(0)
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  blockedUntil DateTime? @map("blocked_until") @db.Timestamptz(6)
+  @@map("attendance_guards")
+}
+
+model CashShift {
+  id String @id @db.Uuid
+  openingAmount BigInt @map("opening_amount")
+  openedAt DateTime @default(now()) @map("opened_at") @db.Timestamptz(6)
+  openedBy String @map("opened_by") @db.VarChar(120)
+  closedAt DateTime? @map("closed_at") @db.Timestamptz(6)
+  closedBy String? @map("closed_by") @db.VarChar(120)
+  expectedAmount BigInt? @map("expected_amount")
+  countedAmount BigInt? @map("counted_amount")
+  differenceReason String? @map("difference_reason") @db.VarChar(500)
+  version Int @default(0)
+  movements CashMovement[]
+  sales Sale[]
+  @@map("cash_shifts")
+}
+
+model CashMovement {
+  id String @id @db.Uuid
+  shiftId String @map("shift_id") @db.Uuid
+  shift CashShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  kind String @db.VarChar(20)
+  direction String @db.VarChar(3)
+  amount BigInt
+  payment String @db.VarChar(20)
+  concept String @db.VarChar(200)
+  party String @db.VarChar(120)
+  receipt String @db.VarChar(120)
+  employeeId String? @map("employee_id") @db.Uuid
+  employeePayment Json? @map("employee_payment")
+  voidedAt DateTime? @map("voided_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String @map("created_by") @db.VarChar(120)
+  version Int @default(0)
+  @@index([shiftId, createdAt])
+  @@map("cash_movements")
+}
+
+model CashOperation {
+  id String @id @db.Uuid
+  payloadHash String @map("payload_hash") @db.Char(64)
+  actorId String @map("actor_id") @db.VarChar(120)
+  payload Json
+  result Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("cash_operations")
+}
+
+model SettlementAttempt {
+  id String @id @db.Uuid
+  tableId String @map("table_id") @db.Uuid
+  status String @db.VarChar(12)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("settlement_attempts")
+}
+
+// Identifica la PC elegida; no habilita cobros offline por sí sola.
+model OfflineTerminal {
+  id String @id @default("terminal")
+  deviceId String @map("device_id") @db.Uuid
+  tokenHash String @map("token_hash") @db.Char(64)
+  registeredBy String @map("registered_by") @db.VarChar(120)
+  registeredAt DateTime @default(now()) @map("registered_at") @db.Timestamptz(6)
+  @@map("offline_terminal")
 }

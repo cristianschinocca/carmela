@@ -12,10 +12,11 @@ type Props = {
   error: string;
   onPinChange: (pin: string) => void;
   onClose: () => void;
+  busy?: boolean;
   onConfirm: () => void;
 };
 
-export default function EmployeePinDialog({ operator, tableName, purpose, pin, error, onPinChange, onClose, onConfirm }: Props) {
+export default function EmployeePinDialog({ operator, tableName, purpose, pin, error, onPinChange, onClose, onConfirm, busy }: Props) {
   const backLabel = purpose === "enter" ? "Volver al plano" : purpose === "settle" ? "Volver al cobro" : "Volver a la mesa";
   const closeLabel = purpose === "enter" ? "Cancelar acceso" : backLabel;
   const description = purpose === "enter"
@@ -32,7 +33,7 @@ export default function EmployeePinDialog({ operator, tableName, purpose, pin, e
   return (
     <motion.div className="modal-scrim operator-pin-scrim" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={onClose}>
       <motion.section className="acrylic-modal operator-pin-modal" variants={modalVariants} initial="hidden" animate="visible" exit="exit" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="operator-pin-title">
-        <button className="modal-close" aria-label={closeLabel} onClick={onClose}><X size={19} /></button>
+        <button className="modal-close" aria-label={closeLabel} disabled={busy} onClick={onClose}><X size={19} /></button>
         <div className="operator-pin-icon"><KeyRound size={21} /></div>
         <span className="eyebrow">VERIFICAR EMPLEADO</span>
         <h2 id="operator-pin-title">Código de {operator.name}</h2>
@@ -41,14 +42,14 @@ export default function EmployeePinDialog({ operator, tableName, purpose, pin, e
           <label className="field operator-pin-field !text-center">
             Código de cuatro dígitos
             <span className="relative mx-auto block w-full max-w-[240px] rounded-xl focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[var(--brand)]">
-              <input className="!absolute !inset-0 !z-10 !h-full !w-full cursor-text !opacity-0" autoFocus aria-label={`Código de ${operator.name}`} aria-invalid={Boolean(error)} aria-describedby={error ? "employee-pin-error" : undefined} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+              <input className="!absolute !inset-0 !z-10 !h-full !w-full cursor-text !opacity-0" autoFocus disabled={busy} aria-label={`Código de ${operator.name}`} aria-invalid={Boolean(error)} aria-describedby={error ? "employee-pin-error" : undefined} type="password" inputMode="numeric" autoComplete="off" maxLength={4} value={pin} onChange={(event) => onPinChange(event.target.value.replace(/\D/g, "").slice(0, 4))} />
               <span className="grid grid-cols-4 gap-2" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <span key={index} className={`grid h-13 place-items-center rounded-xl border text-xl font-semibold ${error ? "border-red-400 text-red-400" : "border-[var(--border)] bg-[var(--surface)] text-[var(--text)]"}`}>{index < pin.length ? "●" : <span className="text-[var(--muted)] opacity-40">·</span>}</span>)}</span>
             </span>
           </label>
           {error && <motion.p id="employee-pin-error" className="operator-pin-error" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} role="alert">{error}</motion.p>}
           <div className="operator-pin-actions">
-            <button type="button" className="button" onClick={onClose}>{backLabel}</button>
-            <button className="button primary" disabled={pin.length !== 4}><Check size={16} /> {confirmLabel}</button>
+            <button type="button" className="button" disabled={busy} onClick={onClose}>{backLabel}</button>
+            <button className="button primary" disabled={pin.length !== 4 || busy}><Check size={16} /> {confirmLabel}</button>
           </div>
         </form>
       </motion.section>

@@ -7,6 +7,9 @@ import { config } from "./config.js";
 import { authorizedWorkspace, checkWorkspaceDatabase, listWorkspaces } from "./db/workspaces.js";
 import { adminAccounts } from "./admin/accounts.js";
 import { catalogRoutes } from "./catalog/routes.js";
+import { teamRoutes } from "./team/routes.js";
+import { cashRoutes } from "./cash/routes.js";
+import { terminalRoutes } from "./offline/routes.js";
 import { posRoutes } from "./pos/routes.js";
 import { inventoryRoutes } from "./inventory/routes.js";
 
@@ -18,7 +21,10 @@ app.use(express.json({ limit: "100kb" }));
 app.use("/api/admin", adminAccounts);
 app.use("/api/workspaces/:workspaceId/catalog", catalogRoutes);
 app.use("/api/workspaces/:workspaceId/inventory", inventoryRoutes);
+app.use("/api/workspaces/:workspaceId/offline-terminal", terminalRoutes);
 app.use("/api/workspaces/:workspaceId/pos", posRoutes);
+app.use("/api/workspaces/:workspaceId/team", teamRoutes);
+app.use("/api/workspaces/:workspaceId/cash", cashRoutes);
 
 async function sessionFor(cookie: string | undefined) {
   return auth.api.getSession({ headers: new Headers({ cookie: cookie ?? "" }) });

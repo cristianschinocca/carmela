@@ -20,11 +20,11 @@ type Props = {
   tables: Table[]; setTables: Dispatch<SetStateAction<Table[]>>; areaCounts: Record<string, number>;
   layoutMode: boolean; selectingTables: boolean; setActiveArea: Dispatch<SetStateAction<Area>>;
   setSelectedId: Dispatch<SetStateAction<string | null>>; setTableColumns: Dispatch<SetStateAction<Record<Area, number>>>;
-  onToast: (message: string) => void;
+  protectedTableIds?: ReadonlySet<string>; onToast: (message: string) => void;
 };
 
 /** Desplazamiento y redimensionamiento del plano y de sus mesas. */
-export function useFloorInteractions({ boardRef, boardHeight, setBoardHeight, sectorsRef, sectors, setSectors, tables, setTables, areaCounts, layoutMode, selectingTables, setActiveArea, setSelectedId, setTableColumns, onToast }: Props) {
+export function useFloorInteractions({ boardRef, boardHeight, setBoardHeight, sectorsRef, sectors, setSectors, tables, setTables, areaCounts, layoutMode, selectingTables, setActiveArea, setSelectedId, setTableColumns, onToast, protectedTableIds }: Props) {
   const [draggedTableId, setDraggedTableId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ area: Area; slot: number } | null>(null);
   const tableTouchDragRef = useRef<{ id: string; pointerId: number; x: number; y: number; moved: boolean } | null>(null);
@@ -359,6 +359,7 @@ export function useFloorInteractions({ boardRef, boardHeight, setBoardHeight, se
     if (!sector) return;
     const original = tables.find((table) => table.id === id);
     if (!original) return;
+    if (original.area !== area && protectedTableIds?.has(id)) { onToast("Cerrá la cuenta antes de cambiarla de sector."); setDraggedTableId(null); setDropTarget(null); return; }
     if (original.area !== area && (original.area === "counter" || area === "counter")) { onToast("Usá mover cuenta para trasladar consumos desde o hacia Mostrador."); setDraggedTableId(null); setDropTarget(null); return; }
     if (original.area !== area && areaCounts[area] >= sector.limit) {
       onToast(`${sector.label} ya tiene ${sector.limit} mesas.`);

@@ -1,8 +1,10 @@
+import { OfflineTerminalSettings } from "./OfflineTerminalSettings";
 import type { FormEvent } from "react";
 import { ExternalLink, Instagram, LoaderCircle } from "lucide-react";
 import { business } from "../../config/business";
 
 type Props = {
+  userId: string;
   saving: boolean;
   onSubmit: (event: FormEvent) => void;
 };
@@ -10,8 +12,9 @@ type Props = {
 const fieldClass = "mb-[22px] flex flex-col gap-2 text-xs text-[#8d9981]";
 const inputClass = "w-full rounded-lg border border-[#e5eadc] bg-white p-2.5 text-xs text-[#516345]";
 
-export function SettingsPage({ saving, onSubmit }: Props) {
+export function SettingsPage({ userId, saving, onSubmit }: Props) {
   return (
+    <>
     <section className="panel !max-w-[650px]">
       <h2>La identidad de tu local</h2>
       <p className="!mt-2.5 !mb-[25px]">Datos principales de Carmela.</p>
@@ -80,5 +83,7 @@ export function SettingsPage({ saving, onSubmit }: Props) {
         </button>
       </form>
     </section>
+    <OfflineTerminalSettings userId={userId} />
+    </>
   );
 }

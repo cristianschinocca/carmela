@@ -16,15 +16,18 @@ import {
   type TeamMember,
 } from "../../stores/team";
 
-export function AttendanceManager() {
-  const [team, setTeam] = useState<TeamMember[]>(loadTeamMembers);
+type ClockResult = { name: string; type: "Entrada" | "Salida"; time: string };
+type RemoteAttendance = { members: TeamMember[]; clock: (pin: string) => Promise<ClockResult>; disabled?: boolean };
+export function AttendanceManager({ remote }: { remote?: RemoteAttendance }) {
+  const [localTeam, setTeam] = useState<TeamMember[]>(loadTeamMembers);
   const [entries, setEntries] = useState<ClockEntry[]>(loadClockEntries);
   const [showClock, setShowClock] = useState(false);
 
-  useEffect(() => localStorage.setItem(TEAM_STORAGE, JSON.stringify(team)), [team]);
+  const team = remote?.members ?? localTeam;
+  useEffect(() => { if (!remote) localStorage.setItem(TEAM_STORAGE, JSON.stringify(localTeam)); }, [localTeam, remote]);
   useEffect(
-    () => localStorage.setItem(CLOCK_STORAGE, JSON.stringify(entries)),
-    [entries],
+    () => { if (!remote) localStorage.setItem(CLOCK_STORAGE, JSON.stringify(entries)); },
+    [entries, remote],
   );
 
   const activeTeam = team.filter((member) => member.active);
@@ -63,7 +66,7 @@ export function AttendanceManager() {
           <h2 className="!my-2 !text-[23px] !leading-[1.2] max-[760px]:!text-xl">Registrar entrada o salida</h2>
           <p className="max-w-[340px] !text-[11px] !text-[var(--muted)]">Ingresá tu PIN de cuatro números para registrar tu entrada o salida.</p>
         </div>
-        <motion.button whileTap={press} className="button primary !mt-auto min-w-[180px] !px-4 !py-3 max-[900px]:!mt-0 max-[760px]:w-full max-[760px]:justify-center" onClick={() => setShowClock(true)}>
+        <motion.button whileTap={press} className="button primary !mt-auto min-w-[180px] !px-4 !py-3 max-[900px]:!mt-0 max-[760px]:w-full max-[760px]:justify-center" disabled={remote?.disabled} onClick={() => setShowClock(true)}>
           <Clock3 size={17} /> Abrir fichaje
         </motion.button>
       </section>
@@ -87,7 +90,7 @@ export function AttendanceManager() {
 
       <AnimatePresence>
         {showClock && (
-          <ClockModal team={team} onClose={() => setShowClock(false)} onClock={clock} />
+          <ClockModal team={team} onClose={() => setShowClock(false)} onClock={clock} remoteClock={remote?.clock} />
         )}
       </AnimatePresence>
     </div>
@@ -98,39 +101,46 @@ function ClockModal({
   team,
   onClose,
   onClock,
+  remoteClock,
 }: {
   team: TeamMember[];
   onClose: () => void;
   onClock: (member: TeamMember) => "Entrada" | "Salida";
+  remoteClock?: (pin: string) => Promise<ClockResult>;
 }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ name: string; type: "Entrada" | "Salida"; time: string } | null>(null);
   const submitted = useRef(false);
   const modalRef = useRef<HTMLElement>(null);
 
   useEffect(() => { modalRef.current?.focus(); }, []);
 
-  const submit = () => {
-    if (submitted.current) return;
-    const member = team.find((item) => item.active && item.pin === pin);
-    if (!member) {
-      setError("Código incorrecto o usuario inactivo.");
-      setPin("");
+  const submit = async () => {
+    if (submitted.current || pin.length !== 4) return;
+    submitted.current = true;
+    if (remoteClock) {
+      setBusy(true);
+      try { setResult(await remoteClock(pin)); }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo registrar el fichaje."); setPin(""); submitted.current = false; }
+      finally { setBusy(false); }
       return;
     }
-    submitted.current = true;
+    const member = team.find((item) => item.active && item.pin === pin);
+    if (!member) { setError("Código incorrecto o usuario inactivo."); setPin(""); submitted.current = false; return; }
     const type = onClock(member);
     setResult({ name: member.name, type, time: timeNow() });
   };
   const digit = (value: string) => {
-    if (result) return;
+    if (result || busy) return;
     setError("");
     setPin((current) => (current + value).slice(0, 4));
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (busy) return;
       if (event.key === "Escape") onClose();
       else if (result) return;
       else if (/^\d$/.test(event.key)) digit(event.key);
@@ -142,14 +152,14 @@ function ClockModal({
   });
 
   return (
-    <motion.div className="modal-backdrop" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={onClose}>
+    <motion.div className="modal-backdrop" variants={overlayVariants} initial="hidden" animate="visible" exit="exit" onClick={() => { if (!busy) onClose(); }}>
       <motion.section ref={modalRef} tabIndex={-1} className="product-modal !max-w-[350px] !bg-[rgba(255,255,255,.97)] !px-6 !py-[22px] in-data-[theme=dark]:!bg-[rgba(27,25,26,.96)] max-[760px]:!max-h-[calc(100dvh-32px)] max-[760px]:!w-[calc(100vw-32px)] max-[760px]:!overflow-y-auto max-[760px]:!px-5" variants={modalVariants} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="clock-title">
-        <button className="icon-btn close-modal" aria-label="Cerrar fichaje" onClick={onClose}><X size={20} /></button>
+        <button className="icon-btn close-modal" aria-label="Cerrar fichaje" disabled={busy} onClick={onClose}><X size={20} /></button>
         {result ? (
           <div className="!px-0 !pt-3.5 !pb-0.5 text-center">
             <span className="mx-auto mb-[17px] grid size-[60px] place-items-center rounded-full bg-[#edf4e8] text-[#668459]"><Check size={28} /></span>
             <h2 id="clock-title" className="!my-2 !text-[23px]">{result.type} · {result.time}</h2>
-            <p className="!mb-[23px]">{result.name}, tu movimiento quedó guardado en este dispositivo.</p>
+            <p className="!mb-[23px]">{result.name}, tu movimiento quedó registrado.</p>
             <button className="button primary full" onClick={onClose}>Listo</button>
           </div>
         ) : (
@@ -169,7 +179,7 @@ function ClockModal({
               ))}
               <button className="!grid h-[43px] place-items-center rounded-[11px] !border !border-[#e9e2df] !bg-white !text-center !text-[9px] !font-semibold !text-[#8d7b80] hover:!bg-[#fff8fa] in-data-[theme=dark]:!border-[#3b3638] in-data-[theme=dark]:!bg-[#242123] in-data-[theme=dark]:!text-[var(--text)] in-data-[theme=dark]:hover:!bg-[#2d282a]" onClick={() => setPin("")}>Borrar</button>
               <motion.button className="!grid h-[43px] place-items-center rounded-[11px] !border !border-[#e9e2df] !bg-white !text-center !text-base !font-semibold hover:!bg-[#fff8fa] in-data-[theme=dark]:!border-[#3b3638] in-data-[theme=dark]:!bg-[#242123] in-data-[theme=dark]:!text-[var(--text)] in-data-[theme=dark]:hover:!bg-[#2d282a]" whileTap={press} onClick={() => digit("0")}>0</motion.button>
-              <button aria-label="Confirmar fichaje" className="!grid h-[43px] place-items-center rounded-[11px] !border !border-[var(--brand)] !bg-[var(--brand)] !text-center !text-white in-data-[theme=dark]:!border-[#3b3638] in-data-[theme=dark]:!bg-[#242123] in-data-[theme=dark]:!text-[var(--text)]" disabled={pin.length !== 4} onClick={submit}><Check size={19} /></button>
+              <button aria-label="Confirmar fichaje" className="!grid h-[43px] place-items-center rounded-[11px] !border !border-[var(--brand)] !bg-[var(--brand)] !text-center !text-white in-data-[theme=dark]:!border-[#3b3638] in-data-[theme=dark]:!bg-[#242123] in-data-[theme=dark]:!text-[var(--text)]" disabled={pin.length !== 4 || busy} onClick={submit}><Check size={19} /></button>
             </div>
           </>
         )}

@@ -16,16 +16,17 @@ import {
   money,
   type Product,
 } from "./data";
-import TablePOS from "./components/pos/TablePOS";
+import { ConnectedTablePOS } from "./pos/ConnectedTablePOS";
 import { PaidTablesDialog } from "./components/pos/PaidTablesDialog";
 import { ServerCatalog } from "./features/catalog/ServerCatalog";
 import { StockWorkspace } from "./stock/StockWorkspace";
 import { StockAlerts } from "./components/stock/StockAlerts";
 import { loadStock, productsWithStock, type Stock } from "./stores/inventory";
-import { TeamManager } from "./components/team/TeamManager";
-import { AttendanceManager } from "./components/attendance/AttendanceManager";
+import { ServerTeamManager } from "./features/team/ServerTeamManager";
+import { ServerAttendanceManager } from "./features/team/ServerAttendanceManager";
 import { SalesReports } from "./components/reports/SalesReports";
 import { CashRegister } from "./components/cash/CashRegister";
+import { ConnectedCashRegister } from "./features/cash/ConnectedCashRegister";
 import { cashMovementImpact, isCashExpense, type CashExpense } from "./stores/cash";
 import { PublicMenu } from "./components/menu/PublicMenu";
 import { LoginPage } from "./components/auth/LoginPage";
@@ -56,6 +57,7 @@ import {
 export function App() {
   const [sessionMember, setSessionMember] = useState<SessionUser | null>(null);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const [products] = useState<Product[]>(loadProducts);
@@ -78,6 +80,7 @@ export function App() {
   const [period, setPeriod] = useState("Hoy");
   const [selected, setSelected] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
+  const [cashLegacy, setCashLegacy] = useState(false);
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>(loadCashExpenses);
   useEffect(() => {
     let active = true;
@@ -180,6 +183,21 @@ export function App() {
     setNotice(s);
     window.setTimeout(() => setNotice(""), 3500);
   };
+  const reconnect = async () => {
+    if (reconnecting || !sessionMember) return;
+    setReconnecting(true);
+    try {
+      const result = await authClient.getSession();
+      if (result.error || !result.data?.user || result.data.user.id !== sessionMember.id || isSuperadmin(result.data.user)) {
+        toast("Iniciá sesión nuevamente para sincronizar. Los borradores permanecen en este dispositivo.");
+        return;
+      }
+      setSessionMember(result.data.user);
+      setOfflineMode(false);
+      toast("Conexión restablecida. Revisá las mesas pendientes.");
+    } catch { toast("No se pudo conectar. Los borradores permanecen en este dispositivo."); }
+    finally { setReconnecting(false); }
+  };
   const savePreferences = (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -240,7 +258,7 @@ export function App() {
             </AnimatePresence>
             <div className="main-shell">
                 <main className={visiblePage === "Punto de venta" ? "pos-page" : undefined}>
-                {offlineMode && <div className="mx-4 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-[var(--text)]" role="status">POS sin conexión · Los cambios quedan en este dispositivo. Todavía no se sincronizan con el servidor.</div>}
+                {offlineMode && <div className="mx-4 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-[var(--text)]" role="status">Sin conexión · La disponibilidad del punto de venta depende de los datos guardados en este dispositivo. <button type="button" className="ml-2 underline" disabled={reconnecting} onClick={() => void reconnect()}>{reconnecting ? "Conectando…" : "Reconectar"}</button></div>}
                 <button
                   className="icon-btn mobile-toggle floating-menu"
                   aria-label="Abrir navegación"
@@ -313,7 +331,9 @@ export function App() {
                     {visiblePage === "Resumen" ? (
                       <OverviewPage period={period} products={products} cashExpenseTotal={cashExpenseTotal} cashPaidExpenses={cashPaidExpenses} go={go} openCash={() => { setCashMode("movements"); setCashOpen(true); }} />
                     ) : visiblePage === "Punto de venta" ? (
-                      <TablePOS
+                      <ConnectedTablePOS
+                        userId={sessionMember!.id}
+                        offline={offlineMode}
                         products={sellableProducts}
                         onStockChange={setStock}
                         categories={categoryList}
@@ -328,13 +348,13 @@ export function App() {
                     ) : visiblePage === "Reportes" ? (
                       <SalesReports products={products} />
                     ) : visiblePage === "Equipo" ? (
-                      <TeamManager />
+                      <ServerTeamManager key={sessionMember!.id} />
                     ) : visiblePage === "Superadmin" && isSuperadmin(sessionMember) ? (
                       <SuperadminPage currentUser={sessionMember} />
                     ) : visiblePage === "Fichaje" ? (
-                      <AttendanceManager />
+                      <ServerAttendanceManager key={sessionMember!.id} userId={sessionMember!.id} />
                     ) : (
-                      <SettingsPage saving={saving} onSubmit={savePreferences} />
+                      <SettingsPage userId={sessionMember.id} saving={saving} onSubmit={savePreferences} />
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -352,7 +372,7 @@ export function App() {
         )}
       </AnimatePresence>
       <PaidTablesDialog open={salesOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => setSalesOpen(false)} />
-      <CashRegister mode={cashMode} open={cashOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => setCashOpen(false)} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} />
+      {cashLegacy ? <CashRegister mode={cashMode} open={cashOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => { setCashOpen(false); setCashLegacy(false); }} onToast={toast} expenses={cashExpenses} setExpenses={setCashExpenses} /> : <ConnectedCashRegister userId={sessionMember?.id ?? ""} open={cashOpen && !publicView && Boolean(sessionMember) && !isSuperadmin(sessionMember)} onClose={() => setCashOpen(false)} onLocal={() => setCashLegacy(true)} />}
       <AnimatePresence>
         {notice && (
           <motion.div

@@ -52,3 +52,8 @@ No se ejecutan migraciones en cada arranque del servidor; deben aplicarse explí
 - Agregar modelos operativos por dominio en una migración propia, manteniendo la base de cada cafetería aislada de la central.
 - Ventas, caja y stock deben confirmarse dentro de una misma base operativa mediante transacciones e idempotencia. No hacer transacciones entre distintas bases.
 - Limitar conexiones por base, cerrar conexiones al apagar la API y mantener secretos fuera del repositorio.
+
+
+### Códigos del equipo
+
+En producción configurá `EMPLOYEE_PIN_PEPPER` con un secreto independiente de al menos 32 caracteres y conservá una copia segura. Es necesario para verificar unicidad de los PIN sin guardarlos en claro. Cambiarlo requiere restablecer los PIN existentes. En desarrollo, si no se configura, se usa `BETTER_AUTH_SECRET`. Los PIN se almacenan con sal y scrypt; todavía falta conectar su verificación con fichaje y POS.

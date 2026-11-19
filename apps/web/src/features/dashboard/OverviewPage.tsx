@@ -120,9 +120,9 @@ export function OverviewPage({
           <div className="panel-heading !mb-5 !items-start">
             <div>
               <h2>Caja del turno</h2>
-              <p>Resumen del efectivo del turno.</p>
+              <p>Datos de demostración guardados en este navegador.</p>
             </div>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#edf7ef] px-[9px] py-1.5 text-[10px] font-semibold text-[#347a4c] in-data-[theme=dark]:bg-[#1d3024] in-data-[theme=dark]:text-[#9bd6aa]"><i className="h-1.5 w-1.5 rounded-full bg-[#49a86b]" aria-hidden="true" /> Abierta</span>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#edf7ef] px-[9px] py-1.5 text-[10px] font-semibold text-[#347a4c] in-data-[theme=dark]:bg-[#1d3024] in-data-[theme=dark]:text-[#9bd6aa]"><i className="h-1.5 w-1.5 rounded-full bg-[#49a86b]" aria-hidden="true" /> Demostración</span>
           </div>
           <div className="flex items-start justify-between gap-3.5 rounded-[14px] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_3%,var(--surface))] p-[18px]">
             <div className="min-w-0">

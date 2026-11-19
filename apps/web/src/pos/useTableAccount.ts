@@ -1,6 +1,6 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Product } from "../data";
-import { loadTeamMembers, type TeamMember } from "../stores/team";
+import { type TeamMember } from "../stores/team";
 import { allocateCounterTableNumber, ensureCounterTableSequenceAtLeast } from "../stores/counterSequence";
 import { newLineId, NEW_COUNTER_TARGET, type Line, type Table } from "./floorModel";
 import { lineUnitPrice, makeCounterTable, sameLinePrice } from "./accountModel";
@@ -9,11 +9,13 @@ type Props = {
   tables: Table[]; setTables: Dispatch<SetStateAction<Table[]>>; selectedId: string | null; selected: Table | null;
   products: Product[]; operator: TeamMember | null; setOperator: Dispatch<SetStateAction<TeamMember | null>>;
   setAccountOpen: Dispatch<SetStateAction<boolean>>; canOpenCounter: boolean;
+  teamMembers: TeamMember[]; verifyMember: (member: TeamMember, pin: string) => Promise<void>;
   displayTableName: (table: Table) => string; onToast: (message: string) => void;
 };
 
 /** Artículos, descuentos y traslados de la cuenta activa. */
-export function useTableAccount({ tables, setTables, selectedId, selected, products, operator, setOperator, setAccountOpen, canOpenCounter, displayTableName, onToast }: Props) {
+export function useTableAccount({ tables, setTables, selectedId, selected, products, operator, setOperator, setAccountOpen, canOpenCounter, displayTableName, onToast, teamMembers, verifyMember }: Props) {
+  const movePending = useRef(false);
   const [lineEditorId, setLineEditorId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [lineNoteDraft, setLineNoteDraft] = useState("");
@@ -27,6 +29,8 @@ export function useTableAccount({ tables, setTables, selectedId, selected, produ
   const [sourceMovePin, setSourceMovePin] = useState("");
   const [targetMovePin, setTargetMovePin] = useState("");
   const [moveError, setMoveError] = useState("");
+  const moveRevision = useRef(0);
+  useEffect(() => { moveRevision.current++; }, [lineEditorId, selectedId, moveTargetId, moveTargetOperatorId, lineQuantityDraft, moveCovers, sourceMovePin, targetMovePin, operator]);
   const lineDialogRef = useRef<HTMLElement>(null);
   const lineOpenedAtRef = useRef(0);
   const update = (change: (table: Table) => Table) =>
@@ -48,8 +52,8 @@ export function useTableAccount({ tables, setTables, selectedId, selected, produ
     : tables.find((table) => table.id === moveTargetId && table.id !== selectedId);
   const destinationOwner = moveTarget?.items.length
     ? moveTarget.operatorId
-      ? loadTeamMembers().find((member) => member.id === moveTarget.operatorId)
-      : loadTeamMembers().find((member) => member.id === Number(moveTargetOperatorId) && member.active)
+      ? teamMembers.find((member) => member.id === moveTarget.operatorId)
+      : teamMembers.find((member) => member.id === Number(moveTargetOperatorId) && member.active)
     : operator;
   const sourceNeedsMovePin = Boolean(selected && !selected.operatorId);
   const destinationNeedsMovePin = Boolean(moveTarget?.items.length && destinationOwner && destinationOwner.id !== operator?.id);
@@ -150,20 +154,25 @@ export function useTableAccount({ tables, setTables, selectedId, selected, produ
     }));
     setLineEditorId(null);
   };
-  const moveLineToTable = () => {
-    if (!selected || !operator || !moveTarget || (!moveWholeTable && (!editorLine || !editorProduct))) return;
-    if (sourceNeedsMovePin && sourceMovePin !== operator.pin) {
-      setMoveError(`El código de ${operator.name} no es correcto.`);
-      return;
-    }
+  const moveLineToTable = async () => {
+    if (!selected || !operator || !moveTarget || (!moveWholeTable && (!editorLine || !editorProduct)) || movePending.current) return;
     if (moveTarget.items.length && !destinationOwner) {
-      setMoveError(moveTarget.operatorId ? "El responsable de la mesa destino no está disponible. Actualizalo desde esa mesa." : "Elegí el responsable de la mesa destino.");
+      setMoveError(moveTarget.operatorId ? "El responsable de la mesa destino no está disponible." : "Elegí el responsable de la mesa destino.");
       return;
     }
-    if (destinationNeedsMovePin && targetMovePin !== destinationOwner?.pin) {
-      setMoveError(`El código de ${destinationOwner?.name} no es correcto.`);
+    movePending.current = true;
+    const revision = moveRevision.current;
+    try {
+      if (sourceNeedsMovePin) await verifyMember(operator, sourceMovePin);
+      if (destinationNeedsMovePin && destinationOwner) await verifyMember(destinationOwner, targetMovePin);
+    } catch (error) {
+      setMoveError(error instanceof Error ? error.message : "No se pudo verificar el código.");
+      movePending.current = false;
       return;
     }
+    movePending.current = false;
+    // Si el diálogo se cerró durante la consulta, no aplicar el traslado.
+    if (!lineDialogRef.current?.isConnected || revision !== moveRevision.current) return;
     const counterNumber = moveTarget.area === "counter" && !moveTarget.items.length && !moveTarget.counterTurnNumber
       ? allocateCounterTableNumber(tables.filter((table) => table.area === "counter").map((table) => table.counterTurnNumber || 0))
       : moveTarget.counterTurnNumber;

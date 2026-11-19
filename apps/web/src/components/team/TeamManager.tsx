@@ -65,16 +65,16 @@ const modalFormClass = "product-form !flex min-h-0 flex-1 flex-col !p-0";
 const modalBodyClass = "member-form-body min-h-0 flex-1 overflow-y-auto px-[30px] py-[23px] [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] max-[760px]:p-5";
 const modalActionsClass = "form-actions !min-h-[68px] shrink-0 !border-t !border-[var(--border)] !bg-[var(--surface)] !px-[30px] !pt-[13px] !pb-[18px] max-[760px]:!px-5 max-[760px]:!pt-3 max-[760px]:!pb-4 max-[420px]:!gap-1.5 max-[420px]:[&_.button]:!p-[9px] max-[420px]:[&_.button]:!text-[10px] max-[420px]:[&_.danger-text]:!mr-auto max-[420px]:[&_.danger-text]:!gap-[3px] max-[420px]:[&_.danger-text]:!px-0 max-[420px]:[&_.danger-text]:!py-[5px] max-[420px]:[&_.danger-text]:!text-[9px]";
 const scheduleColumns = "grid grid-cols-[minmax(72px,1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] items-center gap-[9px]";
-export function TeamManager() {
-  const [team, setTeam] = useState<TeamMember[]>(() =>
-    loadTeamMembers(),
-  );
+type RemoteTeam = { members: TeamMember[]; save: (member: TeamMember) => Promise<boolean>; remove: (id: number) => Promise<boolean> };
+export function TeamManager({ remote }: { remote?: RemoteTeam } = {}) {
+  const [localTeam, setTeam] = useState<TeamMember[]>(() => loadTeamMembers());
+  const team = remote?.members ?? localTeam;
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(
-    () => localStorage.setItem(TEAM_STORAGE, JSON.stringify(team)),
-    [team],
+    () => { if (!remote) localStorage.setItem(TEAM_STORAGE, JSON.stringify(localTeam)); },
+    [localTeam, remote],
   );
   const visible = useMemo(
     () =>
@@ -90,18 +90,22 @@ export function TeamManager() {
   ).length;
   const configured = team.filter((member) => member.active && member.pay?.rate);
   const monthlyTotal = configured.reduce((total, member) => total + monthlyPayEstimate(member.pay), 0);
-  const save = (member: TeamMember) => {
+  const save = async (member: TeamMember) => {
+    if (remote) { const saved = await remote.save(member); if (saved) setEditing(null); return saved; }
     setTeam((current) =>
       current.some((item) => item.id === member.id)
         ? current.map((item) => (item.id === member.id ? member : item))
         : [...current, member],
     );
     setEditing(null);
+    return true;
   };
-  const remove = (id: number) => {
+  const remove = async (id: number) => {
+    if (remote) { const removed = await remote.remove(id); if (removed) { setConfirmDelete(false); setEditing(null); } return removed; }
     setTeam((current) => current.filter((member) => member.id !== id));
     setConfirmDelete(false);
     setEditing(null);
+    return true;
   };
   return (
     <div className="team-page grid gap-4">
@@ -121,7 +125,7 @@ export function TeamManager() {
           </span>
           <div>
             <small className="mb-1 block text-[10px] text-[var(--muted)]">Trabajando ahora</small>
-            <strong className="block text-[24px] font-[650] tracking-[-.6px] max-[760px]:text-xl">{onShift}</strong>
+            <strong className="block text-[24px] font-[650] tracking-[-.6px] max-[760px]:text-xl">{remote ? "—" : onShift}</strong>
           </div>
         </section>
         <section className={`${metricClass} max-[760px]:col-span-full`}>
@@ -219,7 +223,7 @@ export function TeamManager() {
             </div>
           )}
           <p className="help-copy !border-t !border-[var(--border)] !px-6 !pt-3.5 !pb-[19px] !text-[9px] max-[760px]:!px-4 max-[760px]:!py-3">
-            Datos de demostración guardados únicamente en este navegador.
+            {remote ? "Los códigos se guardan protegidos y no se muestran nuevamente." : "Datos de demostración guardados únicamente en este navegador."}
           </p>
         </section>
       </div>
@@ -227,6 +231,7 @@ export function TeamManager() {
         {editing && (
           <MemberEditor
             member={editing}
+            remote={Boolean(remote)}
             team={team}
             confirmDelete={confirmDelete}
             setConfirmDelete={setConfirmDelete}
@@ -241,6 +246,7 @@ export function TeamManager() {
 }
 function MemberEditor({
   member,
+  remote,
   team,
   confirmDelete,
   setConfirmDelete,
@@ -249,32 +255,37 @@ function MemberEditor({
   onDelete,
 }: {
   member: TeamMember;
+  remote: boolean;
   team: TeamMember[];
   confirmDelete: boolean;
   setConfirmDelete: (value: boolean) => void;
   onClose: () => void;
-  onSave: (member: TeamMember) => void;
-  onDelete: (id: number) => void;
+  onSave: (member: TeamMember) => Promise<boolean>;
+  onDelete: (id: number) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState(member);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [setup, setSetup] = useState<"schedule" | "rate" | null>(null);
   const updateDraft = (next: TeamMember) => { setError(""); setDraft(next); };
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving) return;
     if (!draft.name.trim()) {
       setError("Ingresá el nombre de la persona.");
       return;
     }
-    if (!/^\d{4}$/.test(draft.pin)) {
+    if ((!remote || !draft.id || draft.pin) && !/^\d{4}$/.test(draft.pin)) {
       setError("Ingresá un código de exactamente 4 números.");
       return;
     }
-    if (team.some((item) => item.id !== draft.id && item.pin === draft.pin)) {
+    if (draft.pin && team.some((item) => item.id !== draft.id && item.pin === draft.pin)) {
       setError("Ese código ya pertenece a otra persona.");
       return;
     }
-    onSave({ ...draft, id: draft.id || Date.now(), name: draft.name.trim() });
+    setSaving(true);
+    try { if (!await onSave({ ...draft, id: draft.id || Date.now(), name: draft.name.trim() })) setError("No se pudo guardar. Revisá el mensaje e intentá nuevamente."); }
+    finally { setSaving(false); }
   };
   if (setup) {
     return <TeamSetupDialog key={setup} mode={setup} pay={draft.pay} onCancel={() => setSetup(null)} onApply={(pay) => { updateDraft({ ...draft, pay }); setSetup(null); }} />;
@@ -340,7 +351,8 @@ function MemberEditor({
               Código de fichaje
               <input
                 aria-describedby="pin-help"
-                required
+                required={!remote || !draft.id}
+                placeholder={remote && draft.id ? "Dejar vacío para conservar" : "4 números"}
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={4}
@@ -354,7 +366,7 @@ function MemberEditor({
                   });
                 }}
               />
-              <small id="pin-help">4 números, sin repetir.</small>
+              <small id="pin-help">{remote && draft.id ? "Dejá vacío para conservar el código actual." : "4 números, sin repetir."}</small>
             </label>
           </div>
           <label className="availability-control !m-0 !items-center !px-3 !py-2.5">
@@ -363,7 +375,7 @@ function MemberEditor({
               checked={draft.active}
               onChange={(event) => updateDraft({ ...draft, active: event.target.checked })}
             />
-            <span><strong>Usuario activo</strong><small>Puede ingresar al sistema y registrar fichajes.</small></span>
+            <span><strong>Empleado activo</strong><small>{remote ? "Disponible para el equipo de la cafetería." : "Puede ingresar al sistema y registrar fichajes."}</small></span>
           </label>
           <div className="mt-3 grid grid-cols-1 gap-2 min-[521px]:grid-cols-2">
             <button type="button" className="flex w-full min-w-0 items-center gap-[11px] rounded-[10px] !border !border-[var(--border)] !bg-[var(--surface)] p-2.5 text-left transition-colors hover:!border-[var(--brand)] focus-visible:!border-[var(--brand)]" onClick={() => setSetup("schedule")}>
@@ -405,7 +417,7 @@ function MemberEditor({
                 <button type="button" onClick={() => setConfirmDelete(false)}>
                   Cancelar
                 </button>
-                <button type="button" onClick={() => onDelete(draft.id)}>
+                <button type="button" disabled={saving} onClick={() => { setSaving(true); void onDelete(draft.id).then((removed) => { if (!removed) setError("No se pudo eliminar el empleado."); }).finally(() => setSaving(false)); }}>
                   Sí, eliminar
                 </button>
               </div>
@@ -414,8 +426,8 @@ function MemberEditor({
                 <button type="button" className="button" onClick={onClose}>
                   Cancelar
                 </button>
-                <button className="button primary">
-                  {draft.id ? "Guardar cambios" : "Crear empleado"}
+                <button className="button primary" disabled={saving}>
+                  {saving ? "Guardando…" : draft.id ? "Guardar cambios" : "Crear empleado"}
                 </button>
               </>
             )}

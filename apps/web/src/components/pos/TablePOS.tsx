@@ -34,6 +34,7 @@ import {
 } from "../../stores/team";
 import type { Stock } from "../../stores/inventory";
 import { settleSaleLocally } from "../../stock/settleSale";
+import type { PosTeam } from "../../features/team/posTeamClient";
 import PosCatalog from "./PosCatalog";
 import PosAccountTicket from "./PosAccountTicket";
 import PosPaymentDialog, { type PaymentMethod } from "./PosPaymentDialog";
@@ -47,6 +48,11 @@ import {
   KEY, SECTORS_KEY, COUNTER_LIMIT, TABLE_SLOT_LIMIT, compactCounterSlots, loadSectors, makeDefaultMosaic, loadInitialFloor,
   type Area, type Sector, type Table, type PinPurpose,
 } from "../../pos/floorModel";
+import { floorClient, FloorRequestError, planRequest, type FloorRequest } from "../../pos/floorClient";
+import { CounterOpenDialog } from "../../pos/CounterOpenDialog";
+import { ServerAccountEditor } from "../../pos/ServerAccountEditor";
+import type { ServerAccount, ServerEmployee } from "../../pos/serverAccountClient";
+import type { CatalogProduct } from "../../features/catalog/catalogClient";
 import { previewCounterTableNumber } from "../../stores/counterSequence";
 
 export default function TablePOS({
@@ -54,14 +60,37 @@ export default function TablePOS({
   categories,
   onToast,
   onStockChange,
+  floorKey = KEY,
+  sectorsKey = SECTORS_KEY,
+  initialTables,
+  initialSectors,
+  serverWorkspace,
+  initialFloorVersion = 0,
+  onLocalFloorSave,
+  initialUnsynced = false,
+  teamAccess,
+  serverView, openCounterKey, onCounterOpened, onCounterHandled,
 }: {
+  openCounterKey?: string | null; onCounterOpened?: (key: string) => void; onCounterHandled?: () => void;
+  serverView?: { userId: string; workspace: string; accounts: ServerAccount[]; products: CatalogProduct[]; employees: ServerEmployee[]; offline?: boolean; pendingIds: string[]; onRefresh: () => void };
+  teamAccess?: PosTeam;
   products: Product[];
   categories: string[];
   onToast: (message: string) => void;
   onStockChange: (stock: Stock) => void;
+  floorKey?: string; sectorsKey?: string; initialTables?: Table[]; initialSectors?: Sector[]; serverWorkspace?: string; initialFloorVersion?: number; initialUnsynced?: boolean; onLocalFloorSave?: (version: number) => void;
 }) {
-  const [tables, setTables] = useState<Table[]>(loadInitialFloor);
-  const [sectors, setSectors] = useState<Sector[]>(loadSectors);
+  const [counterOpen, setCounterOpen] = useState(false);
+  const [serverEditing, setServerEditing] = useState<ServerAccount | null>(null);
+  const serverAccounts = useMemo(() => new Map(serverView?.accounts.map((account) => [account.clientKey, account]) ?? []), [serverView?.accounts]);
+  const serverOccupied = useMemo(() => new Set(serverView?.accounts.filter((account) => account.items.length || account.guests || account.billRequested).map((account) => account.clientKey) ?? []), [serverView?.accounts]);
+  useEffect(() => {
+    if (!openCounterKey || !serverView) return;
+    const account = serverAccounts.get(openCounterKey);
+    if (account) { setServerEditing(account); onCounterHandled?.(); }
+  }, [openCounterKey, serverAccounts, serverView, onCounterHandled]);
+  const [tables, setTables] = useState<Table[]>(() => initialTables ?? loadInitialFloor(floorKey, sectorsKey));
+  const [sectors, setSectors] = useState<Sector[]>(() => initialSectors ?? loadSectors(sectorsKey));
   const [tableColumns, setTableColumns] = useState<Record<Area, number>>({});
   const reducedMotion = useReducedMotion();
   const boardRef = useRef<HTMLDivElement>(null);
@@ -74,6 +103,13 @@ export default function TablePOS({
   const [previousOperator, setPreviousOperator] = useState<TeamMember | null>(null);
   const [coversOpen, setCoversOpen] = useState(false);
   const [coversDraft, setCoversDraft] = useState(2);
+  const currentTeam = () => (teamAccess?.members ?? loadTeamMembers()).filter((member) => member.active);
+  const pinPending = useRef(false);
+  const [verifyingPin, setVerifyingPin] = useState(false);
+  const verifyMember = async (member: TeamMember, pin: string) => {
+    if (teamAccess) return teamAccess.verify(member, pin);
+    if (member.pin !== pin) throw new Error("El código no corresponde al empleado seleccionado.");
+  };
   const [teamOptions, setTeamOptions] = useState<TeamMember[]>([]);
   const [operator, setOperator] = useState<TeamMember | null>(null);
   const [operatorMenuOpen, setOperatorMenuOpen] = useState(false);
@@ -85,7 +121,31 @@ export default function TablePOS({
   const [exitPin, setExitPin] = useState("");
   const [exitPinError, setExitPinError] = useState("");
   const [pinPurpose, setPinPurpose] = useState<PinPurpose>("enter");
-  const [layoutMode, setLayoutMode] = useState(false);
+  const [layoutMode, setLayoutMode] = useState(initialUnsynced);
+  const [floorVersion, setFloorVersion] = useState(initialFloorVersion);
+  const [floorSaving, setFloorSaving] = useState(false);
+  const [floorPending, setFloorPending] = useState<FloorRequest | null>(() => {
+    try { const value = localStorage.getItem(`${floorKey}.request`); return value ? JSON.parse(value) as FloorRequest : null; } catch { return null; }
+  });
+  const [floorConflict, setFloorConflict] = useState(false);
+  const finishFloorEditing = async () => {
+    if (!serverWorkspace) { onLocalFloorSave?.(floorVersion); setLayoutMode(false); if (onLocalFloorSave) onToast("Plano guardado en este dispositivo; falta sincronizarlo."); return true; }
+    const operation = floorPending ?? planRequest(crypto.randomUUID(), floorVersion, sectors, tables);
+    localStorage.setItem(`${floorKey}.request`, JSON.stringify(operation));
+    setFloorPending(operation); setFloorSaving(true);
+    try {
+      const result = await floorClient.save(serverWorkspace, operation);
+      localStorage.removeItem(`${floorKey}.request`);
+      setFloorVersion(result.version); onLocalFloorSave?.(result.version); setFloorPending(null); setFloorConflict(false); setLayoutMode(false);
+      onToast("Plano guardado en la cafetería."); return true;
+    } catch (error) {
+      if (error instanceof FloorRequestError && error.status === 400) {
+        localStorage.removeItem(`${floorKey}.request`); setFloorPending(null);
+      } else if (error instanceof FloorRequestError && error.status >= 400 && error.status < 500) setFloorConflict(true);
+      onToast(error instanceof Error ? `${error.message} Volvé a intentar o recargá para revisar el plano.` : "No se pudo confirmar el plano.");
+      return false;
+    } finally { setFloorSaving(false); }
+  };
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [utilityRail, setUtilityRail] = useState<HTMLElement | null>(null);
   const planTriggerRef = useRef<HTMLButtonElement>(null);
@@ -109,13 +169,13 @@ export default function TablePOS({
   const displayTableName = (table: Table) =>
     table.area === "counter" && table.counterTurnNumber
       ? `Mesa ${table.counterTurnNumber}`
-      : table.area === "counter" && !layoutMode && !table.items.length
+      : table.area === "counter" && !serverView && !layoutMode && !table.items.length
         ? "Nueva mesa"
         : table.name;
   const displayTableNumber = (table: Table) =>
     displayTableName(table).match(/\d+/)?.[0] || displayTableName(table);
   const areaCounts = Object.fromEntries(sectors.map((area) => [area.id, tables.filter((table) => table.area === area.id).length]));
-  const canOpenCounter = sectors.some((sector) => sector.id === "counter") && (areaCounts.counter || 0) < COUNTER_LIMIT;
+  const canOpenCounter = !serverView?.offline && sectors.some((sector) => sector.id === "counter") && (areaCounts.counter || 0) < COUNTER_LIMIT;
   const floorCapacity = sectors.reduce((sum, sector) => sum + sector.limit, 0);
   const isFreeform = sectors.every((sector) => Boolean(sector.layout));
   const { sectorName, setSectorName, addingSector, setAddingSector, addingTables, setAddingTables,
@@ -123,7 +183,7 @@ export default function TablePOS({
     selectedTableIds, setSelectedTableIds, confirmDeleteTables, setConfirmDeleteTables,
     occupiedSelection, openAddTables, createTables, deleteSelectedTables, arrangeTables, moveSelectedArea, createSector, deleteSector,
   } = useFloorEditor({ tables, setTables, sectors, setSectors, selected, setSelectedId, activeArea, setActiveArea,
-    setLayoutMode, areaCounts, isFreeform, boardHeight, onToast });
+    setLayoutMode, areaCounts, isFreeform, boardHeight, onToast, protectedTableIds: serverOccupied });
   useEffect(() => {
     setUtilityRail(document.querySelector<HTMLElement>(".workspace-utility-rail"));
   }, []);
@@ -159,7 +219,7 @@ export default function TablePOS({
     moveError, setMoveError, lineDialogRef, lineOpenedAtRef, addProduct, changeQuantity, openLineEditor,
     openTableMove, saveLineNote, moveLineToTable,
   } = useTableAccount({ tables, setTables, selectedId, selected, products, operator, setOperator, setAccountOpen,
-    canOpenCounter, displayTableName, onToast });
+    canOpenCounter, displayTableName, onToast, teamMembers: currentTeam(), verifyMember });
   const sectorsRef = useRef(sectors);
   sectorsRef.current = sectors;
   const { draggedTableId, setDraggedTableId, dropTarget, setDropTarget, suppressTableClickRef,
@@ -168,20 +228,21 @@ export default function TablePOS({
     startSectorResize, moveSectorResize, finishSectorResize, resizeSectorWithKeyboard,
     slotAtPointer, moveTableTo, startTableTouch, moveTableTouch, finishTableTouch,
   } = useFloorInteractions({ boardRef, boardHeight, setBoardHeight, sectorsRef, sectors, setSectors, tables, setTables,
-    areaCounts, layoutMode, selectingTables, setActiveArea, setSelectedId, setTableColumns, onToast });
+    areaCounts, layoutMode, selectingTables, setActiveArea, setSelectedId, setTableColumns, onToast, protectedTableIds: serverOccupied });
   const { normalizedLayoutRef, autoFitWidthRef } = useFloorLayout({ boardRef, sectorsRef, resizeRef, sectors, setSectors, tables,
     tableColumns, setTableColumns, setBoardHeight, layoutMode, isFreeform, draggingSectorId, resizingSectorId });
   const openNextCounter = () => {
     if (!canOpenCounter) return;
+    if (serverView) { setCounterOpen(true); return; }
     const nextTable = makeCounterTable(tables);
     setTables((current) => [...current, nextTable]);
     setSelectedId(nextTable.id);
-    setTeamOptions(loadTeamMembers().filter((member) => member.active));
+    setTeamOptions(currentTeam());
     setOperator(null);
     setEmployeePickerOpen(true);
   };
-  useEffect(() => localStorage.setItem(KEY, JSON.stringify(tables)), [tables]);
-  useEffect(() => localStorage.setItem(SECTORS_KEY, JSON.stringify(sectors)), [sectors]);
+  useEffect(() => localStorage.setItem(floorKey, JSON.stringify(tables)), [tables]);
+  useEffect(() => localStorage.setItem(sectorsKey, JSON.stringify(sectors)), [sectors]);
   useEffect(() => {
     const trackPointer = (event: PointerEvent) => {
       if (event.pointerType === "mouse") pointerPositionRef.current = { x: event.clientX, y: event.clientY };
@@ -223,6 +284,7 @@ export default function TablePOS({
         !counterHovered ||
         layoutMode ||
         !canOpenCounter ||
+        counterOpen || !!serverEditing ||
         accountOpen ||
         employeePickerOpen ||
         coversOpen ||
@@ -239,6 +301,8 @@ export default function TablePOS({
   }, [
     accountOpen,
     counterHovered,
+    counterOpen,
+    serverEditing,
     coversOpen,
     employeePickerOpen,
     exitPinOpen,
@@ -371,13 +435,19 @@ export default function TablePOS({
     return Math.max(0, tableSubtotal - Math.min(table.discount, tableSubtotal));
   };
   const openTable = (id: string) => {
+    if (!layoutMode && serverView) {
+      const account = serverAccounts.get(id);
+      if (!account) { onToast("Guardá el plano antes de abrir esta mesa."); return; }
+      setServerEditing(account); return;
+    }
     setSelectedId(id);
     if (!layoutMode) {
-      const team = loadTeamMembers().filter((member) => member.active);
+      const team = currentTeam();
       const table = tables.find((item) => item.id === id);
       const assigned = table?.items.length
         ? team.find((member) => member.id === table.operatorId)
         : undefined;
+      if (table?.items.length && table.operatorId && !assigned) { onToast("El responsable de esta cuenta no está disponible en este equipo. Conservá la cuenta local y revisá su asignación."); return; }
       setTeamOptions(team);
       setOperator(assigned || null);
       if (assigned) {
@@ -404,7 +474,7 @@ export default function TablePOS({
     }
   };
   const changeOperator = (memberId: number) => {
-    const members = loadTeamMembers().filter((member) => member.active);
+    const members = currentTeam();
     setTeamOptions(members);
     const member = members.find((item) => item.id === memberId);
     if (!member || member.id === operator?.id) return;
@@ -427,6 +497,7 @@ export default function TablePOS({
     setSelectedId(null);
   };
   const cancelOperatorPin = () => {
+    if (pinPending.current) return;
     if (pinPurpose === "transfer") {
       setOperator(previousOperator);
       setPreviousOperator(null);
@@ -472,12 +543,12 @@ export default function TablePOS({
     setAccountOpen(false);
     setOperator(null);
   };
-  const verifyOperatorPin = () => {
-    if (!operator || exitPin !== operator.pin) {
-      setExitPinError("El código no corresponde al empleado seleccionado.");
-      setExitPin("");
-      return;
-    }
+  const verifyOperatorPin = async () => {
+    if (!operator || pinPending.current || exitPin.length !== 4) return;
+    pinPending.current = true; setVerifyingPin(true);
+    try { await verifyMember(operator, exitPin); }
+    catch (error) { setExitPinError(error instanceof Error ? error.message : "No se pudo verificar el código."); setExitPin(""); pinPending.current = false; setVerifyingPin(false); return; }
+    pinPending.current = false; setVerifyingPin(false);
     if (pinPurpose === "confirm-command") {
       update((table) => ({ ...table, operatorId: operator.id }));
       setExitPinOpen(false);
@@ -523,7 +594,7 @@ export default function TablePOS({
   useEffect(() => { if (!accountOpen) closingSaleRef.current = false; }, [accountOpen]);
   const closeSale = () => {
     if (!selected || !selected.items.length || !payment || closingSaleRef.current) return;
-    if (localStorage.getItem(KEY) !== JSON.stringify(tables)) {
+    if (localStorage.getItem(floorKey) !== JSON.stringify(tables)) {
       onToast("El plano cambió en otra pestaña. Recargá antes de cobrar.");
       return;
     }
@@ -556,7 +627,7 @@ export default function TablePOS({
       ? compactCounterSlots(tables.filter((table) => table.id !== selected.id))
       : tables.map((table) => table.id === selected.id ? { ...table, items: [], discount: 0, billRequested: false, operatorId: undefined, counterTurnNumber: undefined } : table);
     try {
-      onStockChange(settleSaleLocally(sale, products, KEY, nextTables));
+      onStockChange(settleSaleLocally(sale, products, floorKey, nextTables));
     } catch (error) {
       closingSaleRef.current = false;
       onToast(error instanceof Error && error.message.startsWith("Stock insuficiente:") ? error.message : "No se pudo cerrar la mesa. Revisá las recetas y el almacenamiento del navegador.");
@@ -595,7 +666,7 @@ export default function TablePOS({
   };
   return (
     <div className="floor-manager">
-      {utilityRail && createPortal(<div className="floor-plan-controls" ref={planControlsRef}>
+      {utilityRail && !serverView?.offline && createPortal(<div className="floor-plan-controls" ref={planControlsRef}>
           <button
             ref={planTriggerRef}
             type="button"
@@ -623,6 +694,7 @@ export default function TablePOS({
               transition={{ duration: reducedMotion ? 0 : 0.16, ease: "easeOut" }}
             >
           <div className="floor-plan-toolbar" role="group" aria-label="Opciones del plano">
+            <div className="contents" inert={floorSaving || !!floorPending}>
             <div className="table-add-anchor">
               <button className="button" aria-expanded={addingTables} onClick={() => { setAddingSector(false); addingTables ? setAddingTables(false) : openAddTables(); }}>
                 <Plus size={16} /> Agregar mesa
@@ -672,11 +744,20 @@ export default function TablePOS({
             }} title="Restablecer distribución"><RotateCcw size={16} /> Restablecer</button>
             )}
           </>}
+            </div>
+            {floorConflict && <button type="button" className="button" onClick={() => {
+              if (!window.confirm("Se conservarán las cuentas locales, pero se descartarán los cambios de distribución no guardados. ¿Cargar el plano del servidor?")) return;
+              localStorage.setItem(`${floorKey}.layout-backup`, JSON.stringify({ tables, sectors }));
+              localStorage.removeItem(`${floorKey}.request`); localStorage.removeItem(`${floorKey}.pending`);
+              window.location.reload();
+            }}>Cargar plano del servidor</button>}
             <button
               className={layoutMode ? "button primary floor-plan-edit-toggle" : "button floor-plan-edit-toggle"}
               aria-pressed={layoutMode}
-              onClick={() => {
-                setLayoutMode((value) => !value);
+              disabled={floorSaving}
+              onClick={async () => {
+                if (layoutMode || floorPending) { if (!await finishFloorEditing()) return; }
+                else setLayoutMode(true);
                 setSelectedId(null);
                 setSelectingTables(false);
                 setSelectedTableIds([]);
@@ -687,7 +768,7 @@ export default function TablePOS({
               }}
             >
               <Grid2X2 size={16} />
-              {layoutMode ? "Terminar edición" : "Editar plano"}
+              {floorSaving ? "Guardando…" : floorPending ? "Reintentar guardado" : layoutMode ? "Terminar edición" : "Editar plano"}
             </button>
           </div>
             </motion.div>
@@ -699,12 +780,14 @@ export default function TablePOS({
         <button className="button danger-button" disabled={Boolean(occupiedSelection.length)} onClick={deleteSelectedTables}>Confirmar eliminación</button>
         <button className="button" onClick={() => setConfirmDeleteTables(false)}>Cancelar</button>
       </div>}
+      {counterOpen && serverView && <CounterOpenDialog userId={serverView.userId} workspace={serverView.workspace} employees={serverView.employees} onClose={() => setCounterOpen(false)} onOpened={(key) => { setCounterOpen(false); onCounterOpened?.(key); }} />}
+      {serverEditing && serverView && <ServerAccountEditor account={serverEditing} workspace={serverView.workspace} userId={serverView.userId} name={`${sectors.find((sector) => sector.id === tables.find((table) => table.id === serverEditing.clientKey)?.area)?.label ?? "Sector"} · ${tables.find((table) => table.id === serverEditing.clientKey)?.name ?? "Mesa"}`} employees={serverView.employees} products={serverView.products} offline={serverView.offline} onClose={() => setServerEditing(null)} onSaved={() => { setServerEditing(null); serverView.onRefresh(); }} />}
       <section className="panel floor-stage">
-        <div ref={boardRef} className={`floor-board ${isFreeform ? "freeform" : "legacy-layout"}${layoutMode ? " editing" : ""}${selectingTables ? " selecting" : ""}`} style={{ "--floor-board-height": `${boardHeight + (draggingSectorId || resizingSectorId ? window.innerHeight : 0)}px` } as CSSProperties}>
+        <div ref={boardRef} inert={floorSaving || !!floorPending} className={`floor-board ${isFreeform ? "freeform" : "legacy-layout"}${layoutMode ? " editing" : ""}${selectingTables ? " selecting" : ""}`} style={{ "--floor-board-height": `${boardHeight + (draggingSectorId || resizingSectorId ? window.innerHeight : 0)}px` } as CSSProperties}>
           <AnimatePresence initial={false}>
           {sectors.map((area) => {
-            const occupied = tables.filter((table) => table.area === area.id && table.items.length).length;
-            const areaTables = tables.filter((table) => table.area === area.id && (area.id !== "counter" || table.items.length || table.billRequested));
+            const occupied = tables.filter((table) => table.area === area.id && (serverView ? serverOccupied.has(table.id) : table.items.length > 0)).length;
+            const areaTables = tables.filter((table) => table.area === area.id && (area.id !== "counter" || (serverView ? serverOccupied.has(table.id) : table.items.length || table.billRequested)));
             const sectorStyle = isFreeform && area.layout
               ? { "--free-x": `${area.layout.x * 100}%`, "--free-y": `${area.layout.y}px`, "--free-width": `${area.layout.width * 100}%`, "--free-height": `${area.layout.height}px` }
               : { "--sector-columns": area.columns, "--sector-start": area.start, "--sector-min-height": `${area.minHeight}px` };
@@ -734,8 +817,8 @@ export default function TablePOS({
               <div className="floor-sector-tables" style={{ "--table-columns": tableColumns[area.id] || 1 } as CSSProperties}>
                 <AnimatePresence initial={false}>
                 {areaTables.map((table, index) => {
-                  const amount = tableTotal(table);
-                  const status = table.billRequested && amount ? "billing" : amount ? "occupied" : "free";
+                  const serverAccount = serverAccounts.get(table.id);
+                  const status = serverView ? serverAccount?.billRequested ? "billing" : serverOccupied.has(table.id) || (serverAccount && serverView.pendingIds.includes(serverAccount.id)) ? "occupied" : "free" : table.billRequested && table.items.length ? "billing" : table.items.length ? "occupied" : "free";
                   const slot = table.slot ?? index;
                   const columns = tableColumns[area.id] || 1;
                   return <motion.button key={table.id} layout={layoutMode && !draggingSectorId && !resizingSectorId && !sectorGestureSettling && !reducedMotion ? "position" : false} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ ...transitions.fast, layout: transitions.fast }} className={`floor-table ${status}${layoutMode && selectedId === table.id && !selectingTables ? " selected" : ""}${selectedTableIds.includes(table.id) ? " bulk-selected" : ""}${dropTarget?.area === area.id && dropTarget.slot === slot ? " drop-target" : ""}`} whileHover={reducedMotion ? undefined : { y: -2 }} whileTap={layoutMode ? undefined : press}
@@ -752,7 +835,7 @@ export default function TablePOS({
                       const target = slot + delta;
                       if (target >= 0 && target < TABLE_SLOT_LIMIT) moveTableTo(table.id, area.id, target);
                     }}
-                    aria-label={`${layoutMode ? selectingTables ? "Seleccionar" : "Mover" : "Abrir"} ${displayTableName(table)}, ${status === "free" ? "libre" : status === "billing" ? "cuenta solicitada" : "ocupada"}`}
+                    aria-label={`${layoutMode ? selectingTables ? "Seleccionar" : "Mover" : "Abrir"} ${displayTableName(table)}, ${serverAccount && serverView?.pendingIds.includes(serverAccount.id) ? "cambios pendientes" : status === "free" ? "libre" : status === "billing" ? "cuenta solicitada" : "ocupada"}`}
                     onClick={() => {
                       if (suppressTableClickRef.current) return;
                       if (layoutMode && selectingTables) setSelectedTableIds((current) => current.includes(table.id) ? current.filter((id) => id !== table.id) : [...current, table.id]);
@@ -884,6 +967,7 @@ export default function TablePOS({
             error={exitPinError}
             onPinChange={(value) => { setExitPinError(""); setExitPin(value); }}
             onClose={cancelOperatorPin}
+            busy={verifyingPin}
             onConfirm={verifyOperatorPin}
           />
         )}

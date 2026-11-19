@@ -85,9 +85,9 @@ const DEFAULT_SECTORS: Sector[] = [
   { id: "patio", label: "Patio", description: "Mesas exteriores", limit: SECTOR_TABLE_LIMIT, columns: 12, start: 1, minHeight: 186 },
 ];
 const clampSectorColumns = (value: number) => Math.min(12, Math.max(3, Math.round(value)));
-export const loadSectors = (): Sector[] => {
+export const loadSectors = (sectorsKey = SECTORS_KEY): Sector[] => {
   try {
-    const stored = JSON.parse(localStorage.getItem(SECTORS_KEY) || "null");
+    const stored = JSON.parse(localStorage.getItem(sectorsKey) || "null");
     if (!Array.isArray(stored) || !stored.length) return DEFAULT_SECTORS;
     const valid = stored.filter((item) => typeof item.id === "string" && typeof item.label === "string");
     return valid.length ? valid.map((item) => {
@@ -324,12 +324,12 @@ const initialTables = (): Table[] =>
       ...tablePosition(index),
     })),
   );
-const loadTables = () => {
+const loadTables = (floorKey = KEY, sectorsKey = SECTORS_KEY) => {
   try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) || "null");
+    const parsed = JSON.parse(localStorage.getItem(floorKey) || "null");
     if (!Array.isArray(parsed)) return initialTables();
     if (!parsed.length) return [];
-    const sectors = loadSectors();
+    const sectors = loadSectors(sectorsKey);
     const valid = parsed.every((table) =>
       sectors.some((area) => area.id === table.area),
     );
@@ -388,8 +388,8 @@ const loadTables = () => {
     return initialTables();
   }
 };
-export const loadInitialFloor = (): Table[] => {
-  let existing: Table[] = loadTables().filter((table) => table.area !== "counter" || table.items.length > 0 || table.billRequested).map((table) => ({
+export const loadInitialFloor = (floorKey = KEY, sectorsKey = SECTORS_KEY): Table[] => {
+  let existing: Table[] = loadTables(floorKey, sectorsKey).filter((table) => table.area !== "counter" || table.items.length > 0 || table.billRequested).map((table) => ({
     ...table,
     items: table.items.map((line, index) => ({
       ...line,
@@ -397,11 +397,11 @@ export const loadInitialFloor = (): Table[] => {
       note: typeof line.note === "string" ? line.note : "",
     })),
   }));
-  const migrationKey = "carmela.pos.sector-numbers.v1";
+  const migrationKey = floorKey === KEY ? "carmela.pos.sector-numbers.v1" : `${floorKey}.sector-numbers.v1`;
   if (!localStorage.getItem(migrationKey)) {
     const keep = new Set<string>();
     const migrated = new Map<string, Table>();
-    for (const sector of loadSectors()) {
+    for (const sector of loadSectors(sectorsKey)) {
       if (sector.id === "counter") continue;
       const ordered = existing.filter((table) => table.area === sector.id).sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
       const occupied = ordered.filter((table) => table.items.length || table.billRequested);
@@ -414,12 +414,12 @@ export const loadInitialFloor = (): Table[] => {
       });
     }
     existing = existing.filter((table) => table.area === "counter" || keep.has(table.id)).map((table) => migrated.get(table.id) || table);
-    localStorage.setItem(KEY, JSON.stringify(existing));
+    localStorage.setItem(floorKey, JSON.stringify(existing));
     localStorage.setItem(migrationKey, "1");
   }
-  const seedKey = "carmela.pos.seed.128.v1";
+  const seedKey = floorKey === KEY ? "carmela.pos.seed.128.v1" : `${floorKey}.seed.128.v1`;
   if (localStorage.getItem(seedKey)) return compactCounterSlots(existing);
-  const sectors = loadSectors();
+  const sectors = loadSectors(sectorsKey);
   const next = [...existing];
   for (const area of ["salon", "patio"] as const) {
     if (!sectors.some((sector) => sector.id === area)) continue;
@@ -443,7 +443,7 @@ export const loadInitialFloor = (): Table[] => {
       number++;
     }
   }
-  localStorage.setItem(KEY, JSON.stringify(next));
+  localStorage.setItem(floorKey, JSON.stringify(next));
   localStorage.setItem(seedKey, "1");
   return compactCounterSlots(next);
 };
