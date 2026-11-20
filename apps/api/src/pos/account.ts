@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { tenantDatabase } from "@mistro/db/tenant";
+import type { Prisma, tenantDatabase } from "@mistro/db/tenant";
 import { validId } from "../catalog/validation.js";
 
 type Db = ReturnType<typeof tenantDatabase>;
@@ -28,28 +28,30 @@ export function parseAccountChange(value: unknown): AccountChange | null {
 
 /** Guarda una cuenta entera bajo la versión de la mesa y una clave de reintento. */
 export async function saveTableAccount(db: Db, input: AccountChange, verifiedPinHash?: string) {
+  return db.$transaction((tx) => saveTableAccountInTransaction(tx, input, verifiedPinHash));
+}
+
+export async function saveTableAccountInTransaction(tx: Prisma.TransactionClient, input: AccountChange, verifiedPinHash?: string) {
   const hash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
-  return db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.id}, 0))`;
-    const previous = await tx.tableAccountOperation.findUnique({ where: { id: input.id } });
-    if (previous) {
-      if (previous.payloadHash !== hash) throw new AccountError("idempotency", "La operación ya corresponde a otros datos.");
-      return { version: previous.resultVersion, replayed: true };
-    }
-    const tables = await tx.$queryRaw<Array<{ version: number }>>`SELECT version FROM dining_tables WHERE id = ${input.tableId}::uuid FOR UPDATE`;
-    if (!tables.length) throw new AccountError("missing", "La mesa no existe.");
-    if (tables[0].version !== input.expectedVersion) throw new AccountError("version", "La mesa cambió. Actualizá antes de guardar.");
-    const productIds = [...new Set(input.items.map((item) => item.productId))];
-    if (productIds.length && await tx.catalogProduct.count({ where: { id: { in: productIds } } }) !== productIds.length) throw new AccountError("product", "Un producto ya no existe en el catálogo.");
-    if (input.operatorId) {
-      await tx.$queryRaw`SELECT id FROM employees WHERE id = ${input.operatorId}::uuid FOR SHARE`;
-      const operator = await tx.employee.findFirst({ where: { id: input.operatorId, active: true, deletedAt: null }, select: { id: true, pinHash: true } });
-      if (!operator || verifiedPinHash && operator.pinHash !== verifiedPinHash) throw new AccountError("operator", "El responsable o su código cambió. Volvé a verificar.");
-    }
-    await tx.diningTableItem.deleteMany({ where: { tableId: input.tableId } });
-    if (input.items.length) await tx.diningTableItem.createMany({ data: input.items.map((item) => ({ ...item, tableId: input.tableId })) });
-    const table = await tx.diningTable.update({ where: { id: input.tableId }, data: { guests: input.guests, billRequested: input.billRequested, discount: input.discount, ...(input.operatorId !== undefined ? { operatorId: input.operatorId } : {}), version: { increment: 1 } } });
-    await tx.tableAccountOperation.create({ data: { id: input.id, tableId: input.tableId, payloadHash: hash, resultVersion: table.version } });
-    return { version: table.version, replayed: false };
-  });
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.id}, 0))`;
+  const previous = await tx.tableAccountOperation.findUnique({ where: { id: input.id } });
+  if (previous) {
+    if (previous.payloadHash !== hash) throw new AccountError("idempotency", "La operación ya corresponde a otros datos.");
+    return { version: previous.resultVersion, replayed: true };
+  }
+  const tables = await tx.$queryRaw<Array<{ version: number }>>`SELECT version FROM dining_tables WHERE id = ${input.tableId}::uuid FOR UPDATE`;
+  if (!tables.length) throw new AccountError("missing", "La mesa no existe.");
+  if (tables[0].version !== input.expectedVersion) throw new AccountError("version", "La mesa cambió. Actualizá antes de guardar.");
+  const productIds = [...new Set(input.items.map((item) => item.productId))];
+  if (productIds.length && await tx.catalogProduct.count({ where: { id: { in: productIds } } }) !== productIds.length) throw new AccountError("product", "Un producto ya no existe en el catálogo.");
+  if (input.operatorId) {
+    await tx.$queryRaw`SELECT id FROM employees WHERE id = ${input.operatorId}::uuid FOR SHARE`;
+    const operator = await tx.employee.findFirst({ where: { id: input.operatorId, active: true, deletedAt: null }, select: { id: true, pinHash: true } });
+    if (!operator || verifiedPinHash && operator.pinHash !== verifiedPinHash) throw new AccountError("operator", "El responsable o su código cambió. Volvé a verificar.");
+  }
+  await tx.diningTableItem.deleteMany({ where: { tableId: input.tableId } });
+  if (input.items.length) await tx.diningTableItem.createMany({ data: input.items.map((item) => ({ ...item, tableId: input.tableId })) });
+  const table = await tx.diningTable.update({ where: { id: input.tableId }, data: { guests: input.guests, billRequested: input.billRequested, discount: input.discount, ...(input.operatorId !== undefined ? { operatorId: input.operatorId } : {}), version: { increment: 1 } } });
+  await tx.tableAccountOperation.create({ data: { id: input.id, tableId: input.tableId, payloadHash: hash, resultVersion: table.version } });
+  return { version: table.version, replayed: false };
 }

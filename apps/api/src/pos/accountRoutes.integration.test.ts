@@ -70,3 +70,35 @@ test("cobro exige el PIN y su conciliación recupera el resultado", { skip: !key
     assert.equal((await db.cashShift.findFirstOrThrow({ where: { closedAt: null } })).version, 1);
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); await closeDatabases(); await centralDb.$disconnect(); }
 });
+
+test("sincronización offline exige sesión, cafetería, origen y PIN", { skip: !key }, async () => {
+  const db = tenantDatabase(key!);
+  const employee = await db.employee.create({ data: { name: "Ana", role: "Mozo", active: true, pinHash: await hashPin("7135"), pinLookup: pinLookup("7135", "cafe") } });
+  const shift = await db.cashShift.findFirst({ where: { closedAt: null } }) ?? await db.cashShift.create({ data: { id: randomUUID(), openedBy: "owner", openingAmount: 0 } });
+  const category = await db.catalogCategory.create({ data: { name: randomUUID() } });
+  const product = await db.catalogProduct.create({ data: { name: "Café", price: 2000, categoryId: category.id } });
+  const sector = await db.floorSector.create({ data: { name: randomUUID() } });
+  const table = await db.diningTable.create({ data: { sectorId: sector.id, number: 1 } });
+  const account = { id: randomUUID(), tableId: table.id, expectedVersion: 0, operatorId: employee.id, guests: 2, discount: 0, billRequested: false, items: [{ id: randomUUID(), productId: product.id, quantity: 1, unitPrice: 2000, unitDiscount: 0, note: "" }] };
+  const settlement = { id: randomUUID(), tableId: table.id, expectedVersion: 1, expectedShiftId: shift.id, payment: "Efectivo" };
+  const recipeVersions = [{ productId: product.id, recipeId: null, version: null }];
+  const occurredAt = new Date().toISOString();
+  const app = express(); app.use(express.json()); app.use('/:workspaceId/pos', createPosRoutes({
+    getSession: async (cookie) => cookie ? { user: { id: "owner" } } : null,
+    getAccess: async (_user, workspace) => workspace === 'cafe' ? { db, role: 'owner' } as unknown as NonNullable<Awaited<ReturnType<typeof import('../db/tenantAccess.js').tenantAccess>>> : null,
+    allowedOrigin: (origin) => origin === 'http://localhost:5174',
+  }));
+  const server = app.listen(0, '127.0.0.1'); await new Promise<void>((resolve) => server.once('listening', resolve));
+  const address = server.address(); if (!address || typeof address === 'string') throw new Error('Sin servidor');
+  const send = (workspace: string, pin: string, headers: Record<string, string> = {}) => fetch(`http://127.0.0.1:${address.port}/${workspace}/pos/offline-settlements`, { method: 'POST', headers: { cookie: 'session', origin: 'http://localhost:5174', 'content-type': 'application/json', ...headers }, body: JSON.stringify({ account, settlement, recipeVersions, occurredAt, employeePin: pin }) });
+  try {
+    assert.equal((await send('cafe', '7135', { cookie: '' })).status, 401);
+    assert.equal((await send('otro', '7135')).status, 404);
+    assert.equal((await send('cafe', '7135', { origin: 'http://otro.test' })).status, 403);
+    assert.equal((await send('cafe', '0000')).status, 400);
+    assert.equal(await db.sale.count({ where: { id: settlement.id } }), 0);
+    assert.equal((await send('cafe', '7135')).status, 201);
+    assert.equal((await send('cafe', '7135')).status, 200);
+    assert.equal(await db.sale.count({ where: { id: settlement.id } }), 1);
+  } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); await closeDatabases(); await centralDb.$disconnect(); }
+});

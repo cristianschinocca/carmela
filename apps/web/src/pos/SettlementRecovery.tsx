@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { formatSettlementAmount, pendingSettlements, reconcileSettlement, type SettlementOperation } from './serverAccountClient';
+import { formatSettlementAmount, pendingSettlements, reconcileSettlement, withSettlementLock, type SettlementOperation } from './serverAccountClient';
 
 export function SettlementRecovery({ userId, workspace, onResolved }: { userId: string; workspace: string; onResolved: () => void }) {
   const [keys, setKeys] = useState(() => pendingSettlements(userId, workspace));
@@ -11,13 +11,15 @@ export function SettlementRecovery({ userId, workspace, onResolved }: { userId: 
     if (lock.current || !keys.length) return;
     lock.current = true; setBusy(true); setError('');
     try {
-      const raw = localStorage.getItem(keys[0]);
-      if (!raw) throw new Error('El registro pendiente ya no está disponible.');
-      const operation = JSON.parse(raw) as SettlementOperation;
-      const result = await reconcileSettlement(workspace, { id: operation.id, tableId: operation.tableId });
-      localStorage.removeItem(keys[0]);
-      setKeys(pendingSettlements(userId, workspace));
-      setMessage(result.status === 'completed' ? `Cobro confirmado: ${operation.tableName} · ${formatSettlementAmount(result.total)}.` : `El intento de cobro de ${operation.tableName} no se realizó. La cuenta permanece abierta.`);
+      await withSettlementLock(workspace, async () => {
+        const raw = localStorage.getItem(keys[0]);
+        if (!raw) { setKeys(pendingSettlements(userId, workspace)); setMessage('El cobro ya fue verificado en otra pestaña.'); return; }
+        const operation = JSON.parse(raw) as SettlementOperation;
+        const result = await reconcileSettlement(workspace, { id: operation.id, tableId: operation.tableId });
+        localStorage.removeItem(keys[0]);
+        setKeys(pendingSettlements(userId, workspace));
+        setMessage(result.status === 'completed' ? `Cobro confirmado: ${operation.tableName} · ${formatSettlementAmount(result.total)}.` : `El intento de cobro de ${operation.tableName} no se realizó. La cuenta permanece abierta.`);
+      });
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo verificar el cobro.'); }
     finally { lock.current = false; setBusy(false); }
   };

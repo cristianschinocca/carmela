@@ -12,6 +12,7 @@ import { verifyEmployeeCode } from "../team/verify.js";
 import { readOfflineInventory } from "./offlineSnapshot.js";
 import { openCounter, parseCounterOpen, CounterError } from "./counter.js";
 import { validId } from "../catalog/validation.js";
+import { parseRecipeVersions, settleOfflineAccount } from "./offlineSettlement.js";
 
 type Db = NonNullable<Awaited<ReturnType<typeof tenantAccess>>>["db"];
 type Dependencies = {
@@ -96,6 +97,28 @@ posRoutes.post("/settlements", async (req, res, next) => {
   } catch (error) {
     if (error instanceof SettlementError) return res.status(error.reason === "missing" ? 404 : 409).json({ error: error.message });
     if (error && typeof error === "object" && "code" in error && error.code === "P2034") return res.status(409).json({ error: "La cuenta o el stock cambiaron. Actualizá y volvé a intentar." });
+    return next(error);
+  }
+});
+
+posRoutes.post("/offline-settlements", async (req, res, next) => {
+  const account = parseAccountChange(req.body?.account);
+  const settlement = parseSettlement(req.body?.settlement);
+  const versions = parseRecipeVersions(req.body?.recipeVersions);
+  const pin = req.body?.employeePin;
+  if (!account?.operatorId || !settlement || !versions || !settlement.expectedShiftId || typeof req.body?.occurredAt !== "string" || typeof pin !== "string" || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: "Indicá la cuenta, las recetas, la fecha, el turno y el código del responsable." });
+  try {
+    const db = res.locals.posDb as Db;
+    const employee = await db.employee.findUnique({ where: { id: account.operatorId }, select: { legacyId: true, active: true, deletedAt: true, pinHash: true } });
+    if (!employee?.active || employee.deletedAt || !Number.isSafeInteger(Number(employee.legacyId))) return res.status(400).json({ error: "Código incorrecto o empleado inactivo." });
+    const verified = await verifyEmployeeCode(db, res.locals.posActor as string, Number(employee.legacyId), pin);
+    if (verified === "blocked") return res.status(429).json({ error: "Demasiados intentos. Esperá antes de reintentar." });
+    if (verified !== "valid") return res.status(400).json({ error: "Código incorrecto o empleado inactivo." });
+    const result = await settleOfflineAccount(db, account, settlement, versions, req.body.occurredAt, { operatorId: account.operatorId, pinHash: employee.pinHash });
+    return res.status(result.replayed ? 200 : 201).json(result);
+  } catch (error) {
+    if (error instanceof AccountError || error instanceof SettlementError) return res.status(error.reason === "missing" ? 404 : 409).json({ error: error.message });
+    if (error && typeof error === "object" && "code" in error && error.code === "P2034") return res.status(409).json({ error: "La cuenta o el stock cambiaron. Revisá antes de sincronizar." });
     return next(error);
   }
 });

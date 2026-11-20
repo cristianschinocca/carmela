@@ -8,11 +8,12 @@ export const scopeKey = ({ userId, workspace, tableId }: Scope) => JSON.stringif
 
 export function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 3);
+    const request = indexedDB.open(databaseName, 4);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(storeName)) request.result.createObjectStore(storeName);
       if (!request.result.objectStoreNames.contains(draftStoreName)) request.result.createObjectStore(draftStoreName);
       if (!request.result.objectStoreNames.contains("snapshots")) request.result.createObjectStore("snapshots");
+      if (!request.result.objectStoreNames.contains("offline-sales")) request.result.createObjectStore("offline-sales");
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("No se pudo abrir el almacenamiento local."));

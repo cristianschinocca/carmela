@@ -3,9 +3,10 @@ import { X, Plus, Trash2 } from "lucide-react";
 import { PendingAccountReview } from "./PendingAccountReview";
 import { accountDraft } from "./offline/accountDraft";
 import { accountJournal } from "./offline/accountJournal";
+import { saleJournal } from "./offline/saleJournal";
 import { money } from "../data";
 import type { CatalogProduct } from "../features/catalog/catalogClient";
-import { AccountRequestError, accountClient, formatSettlementAmount, pendingSettlements, settlementKey, submitSettlement, type AccountOperation, type SettlementOperation, type ServerAccount, type ServerEmployee, type ServerLine } from "./serverAccountClient";
+import { AccountRequestError, accountClient, formatSettlementAmount, pendingSettlements, settlementKey, submitSettlement, withSettlementLock, type AccountOperation, type SettlementOperation, type ServerAccount, type ServerEmployee, type ServerLine } from "./serverAccountClient";
 
 type Props = { account: ServerAccount; workspace: string; userId: string; name: string; employees: ServerEmployee[]; products: CatalogProduct[]; offline?: boolean; onClose: () => void; onSaved: () => void };
 export function ServerAccountEditor({ account, workspace, userId, name, employees, products, offline = false, onClose, onSaved }: Props) {
@@ -66,10 +67,13 @@ export function ServerAccountEditor({ account, workspace, userId, name, employee
     try {
       const serialized = JSON.stringify(operation);
       if (offline) { await accountDraft.save(scope, operation, draft); onSaved(); return; }
-      await accountJournal.queue(scope, operation);
-      setPending(serialized);
-      await accountClient.save(workspace, operation, pin);
-      await accountJournal.remove(scope, serialized); setPending(null); onSaved();
+      await withSettlementLock(workspace, async () => {
+        if ((await saleJournal.list(userId, workspace)).length || await saleJournal.hasOtherUser(userId, workspace)) throw new Error("Hay cobros sin conexión pendientes de sincronizar. Volvé al plano para revisarlos.");
+        await accountJournal.queue(scope, operation);
+        setPending(serialized);
+        await accountClient.save(workspace, operation, pin);
+        await accountJournal.remove(scope, serialized); setPending(null); onSaved();
+      });
     } catch (reason) {
       if (reason instanceof AccountRequestError && (reason.status === 409 || reason.status === 404)) {
         setConflict(true);
@@ -86,22 +90,36 @@ export function ServerAccountEditor({ account, workspace, userId, name, employee
   };
   const close = () => { if (settledTotal !== null) onSaved(); else onClose(); };
   const checkout = async () => {
-    if (lock.current || !employee || !account.operator || changed || !items.length || pending || !Number.isSafeInteger(subtotal)) return;
+    if (lock.current || !employee || (!offline && (!account.operator || changed)) || !items.length || pending || !Number.isSafeInteger(subtotal)) return;
     lock.current = true; setBusy(true); setError("");
     let key = "";
     let persisted = false;
     try {
-      if (await accountDraft.read(scope)) throw new Error("Hay un borrador pendiente en esta mesa. Sincronizalo antes de cobrar.");
-      if (await accountJournal.read(scope)) throw new Error("Hay un guardado pendiente en esta mesa. Reabrí la cuenta para revisarlo antes de cobrar.");
-      if (pendingSettlements(userId, workspace).length) throw new Error("Hay un cobro pendiente de verificar antes de continuar.");
-      const expectedShiftId = await accountClient.currentShiftId(workspace);
-      const operation: SettlementOperation = { id: crypto.randomUUID(), tableId: account.id, expectedVersion: account.version, payment, operatorId: employee.id, tableName: name, expectedShiftId };
-      key = settlementKey(userId, workspace, operation.id);
-      localStorage.setItem(key, JSON.stringify(operation));
-      persisted = true;
-      const result = await submitSettlement(workspace, operation, pin);
-      localStorage.removeItem(key);
-      setSettledTotal(result.total);
+      await withSettlementLock(workspace, async () => {
+        if (offline) {
+          if (!Number.isSafeInteger(guests) || guests < 0 || guests > 1000 || !Number.isSafeInteger(discount) || discount < 0 || discount > subtotal || items.some((item) => !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000 || !Number.isSafeInteger(item.unitPrice) || item.unitPrice < 0 || item.unitPrice > 2147483647 || !Number.isSafeInteger(item.unitDiscount) || item.unitDiscount < 0 || item.unitDiscount > item.unitPrice)) throw new Error("Revisá las cantidades, los precios y el descuento.");
+          const operation: AccountOperation = { id: pendingOperation?.id ?? crypto.randomUUID(), tableId: account.id, expectedVersion: account.version, guests, discount, billRequested: false, operatorId: employee.id, items: items.map(({ id, productId, quantity, unitPrice, unitDiscount, note }) => ({ id, productId, quantity, unitPrice, unitDiscount, note })) };
+          await saleJournal.queue(scope, name, operation, payment, draft);
+          setDraft(null); onSaved(); return;
+        }
+        if ((await saleJournal.list(userId, workspace)).length || await saleJournal.hasOtherUser(userId, workspace)) throw new Error("Hay cobros sin conexión pendientes de sincronizar. Volvé al plano para revisarlos.");
+        if (await accountDraft.read(scope)) throw new Error("Hay un borrador pendiente en esta mesa. Sincronizalo antes de cobrar.");
+        if (await accountJournal.read(scope)) throw new Error("Hay un guardado pendiente en esta mesa. Reabrí la cuenta para revisarlo antes de cobrar.");
+        if (pendingSettlements(userId, workspace).length) throw new Error("Hay un cobro pendiente de verificar antes de continuar.");
+        const expectedShiftId = await accountClient.currentShiftId(workspace);
+        const operation: SettlementOperation = { id: crypto.randomUUID(), tableId: account.id, expectedVersion: account.version, payment, operatorId: employee.id, tableName: name, expectedShiftId };
+        key = settlementKey(userId, workspace, operation.id);
+        localStorage.setItem(key, JSON.stringify(operation));
+        persisted = true;
+        try {
+          const result = await submitSettlement(workspace, operation, pin);
+          localStorage.removeItem(key);
+          setSettledTotal(result.total);
+        } catch (reason) {
+          if (reason instanceof AccountRequestError && reason.status >= 400 && reason.status < 500) { localStorage.removeItem(key); key = ""; persisted = false; }
+          throw reason;
+        }
+      });
     } catch (reason) {
       if (reason instanceof AccountRequestError && reason.status >= 400 && reason.status < 500) { if (key) localStorage.removeItem(key); setError(reason.message); }
       else if (persisted) { onSaved(); }
@@ -168,11 +186,11 @@ export function ServerAccountEditor({ account, workspace, userId, name, employee
           </div>)}</div>
           <div className="flex flex-wrap items-end gap-2"><label className="field min-w-[180px] flex-1">Agregar producto<select value={productId} onChange={(event) => setProductId(event.target.value)}><option value="">Seleccioná un producto</option>{products.filter((product) => product.available).map((product) => <option key={product.id} value={product.id}>{product.name} · {money(product.price)}</option>)}</select></label><button type="button" className="button" disabled={!productId} onClick={add}><Plus size={15} /> Agregar</button></div>
           <label className="field">Descuento de la cuenta ($)<input type="number" min={0} max={subtotal} step={1} required value={discount} onChange={(event) => setDiscount(Number(event.target.value))} /></label>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4"><strong>Total {money(Math.max(0, subtotal - discount))}</strong><div className="flex gap-2"><button className="button" disabled={busy}>{offline ? "Guardar borrador" : "Guardar cuenta"}</button>{!offline && <button type="button" className="button primary" disabled={busy || changed || !account.operator || !items.length || !Number.isSafeInteger(subtotal)} onClick={() => setConfirmingPayment(true)}>Cobrar</button>}</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4"><strong>Total {money(Math.max(0, subtotal - discount))}</strong><div className="flex gap-2"><button className="button" disabled={busy}>{offline ? "Guardar borrador" : "Guardar cuenta"}</button><button type="button" className="button primary" disabled={busy || (!offline && (changed || !account.operator)) || !items.length || !Number.isSafeInteger(subtotal)} onClick={() => setConfirmingPayment(true)}>Cobrar</button></div></div>
           {!Number.isSafeInteger(subtotal) && <p role="alert" className="text-xs text-red-500">El importe supera el máximo que esta pantalla puede manejar.</p>}
           {changed && !offline && <p className="text-xs text-[var(--muted)]">Guardá los cambios antes de cobrar.</p>}
           {!account.operator && !offline && <p className="text-xs text-[var(--muted)]">Guardá la cuenta para asignar al responsable antes de cobrar.</p>}
-          {confirmingPayment && <div className="grid gap-3 rounded-xl border border-[var(--border)] p-4"><label className="field">Medio de pago<select value={payment} onChange={(event) => setPayment(event.target.value as SettlementOperation["payment"])}><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></label><div className="flex flex-wrap gap-2"><button type="button" className="button primary" disabled={busy || changed} onClick={() => void checkout()}>Confirmar cobro {money(Math.max(0, subtotal - discount))}</button><button type="button" className="button" disabled={busy} onClick={() => setConfirmingPayment(false)}>Volver</button></div></div>}
+          {confirmingPayment && <div className="grid gap-3 rounded-xl border border-[var(--border)] p-4">{offline && <p className="text-sm">El cobro quedará guardado en esta PC y pendiente de sincronización. El responsable deberá ingresar su código cuando vuelva la conexión.</p>}<label className="field">Medio de pago<select value={payment} onChange={(event) => setPayment(event.target.value as SettlementOperation["payment"])}><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></label><div className="flex flex-wrap gap-2"><button type="button" className="button primary" disabled={busy || (!offline && changed)} onClick={() => void checkout()}>Confirmar cobro {money(Math.max(0, subtotal - discount))}</button><button type="button" className="button" disabled={busy} onClick={() => setConfirmingPayment(false)}>Volver</button></div></div>}
         </form>}
       </>}
     </section>

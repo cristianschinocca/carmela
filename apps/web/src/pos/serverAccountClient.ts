@@ -2,7 +2,7 @@ export type OfflineInventory = {
   cash: { id: string; version: number; expectedAmount: string } | null;
   productStock: { productId: string; quantity: number; enabled: boolean; version: number }[];
   ingredients: { id: string; name: string; quantity: string; unit: string; version: number }[];
-  recipes: { productId: string; version: number; ingredients: { ingredientId: string; quantity: string; unit: string }[] }[];
+  recipes: { id?: string; productId: string; version: number; ingredients: { ingredientId: string; quantity: string; unit: string }[] }[];
 };
 export type ServerAccount = {
   id: string; clientKey: string; version: number; guests: number; discount: number; billRequested: boolean;
@@ -55,10 +55,24 @@ export function pendingSettlements(userId: string, workspace: string): string[] 
   const prefix = settlementPrefix(userId, workspace);
   return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)).filter((key): key is string => !!key && key.startsWith(prefix));
 }
+// El bloqueo se comparte entre pestañas y no almacena el PIN del empleado.
+export async function withSettlementLock<T>(workspace: string, action: () => Promise<T>): Promise<T> {
+  if (!navigator.locks) throw new Error('Este navegador no permite coordinar cobros entre pestañas. Usá un navegador compatible.');
+  return navigator.locks.request(`mistro.pos.settlement.${JSON.stringify(workspace)}`, { ifAvailable: true }, async (lock) => {
+    if (!lock) throw new Error('Hay un cobro en curso en otra pestaña. Esperá a que termine antes de continuar.');
+    return action();
+  });
+}
 export async function submitSettlement(workspace: string, operation: SettlementOperation, employeePin: string) {
   const { tableName: _name, ...input } = operation;
   const response = await fetch(`${base(workspace)}/pos/settlements`, { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input, employeePin }) });
   if (!response.ok) { const data = await response.json().catch(() => null) as { error?: string } | null; throw new AccountRequestError(data?.error || 'No se pudo confirmar el cobro.', response.status); }
+  return response.json() as Promise<{ saleId: string; total: string; replayed: boolean }>;
+}
+export async function submitOfflineSale(workspace: string, sale: import("./offline/saleJournal").OfflineSale, employeePin: string) {
+  const { tableName: _name, operatorId: _operator, ...settlement } = sale.settlement;
+  const response = await fetch(`${base(workspace)}/pos/offline-settlements`, { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: sale.account, settlement, recipeVersions: sale.recipeVersions, occurredAt: sale.occurredAt, employeePin }) });
+  if (!response.ok) { const data = await response.json().catch(() => null) as { error?: string } | null; throw new AccountRequestError(data?.error || 'No se pudo sincronizar el cobro.', response.status); }
   return response.json() as Promise<{ saleId: string; total: string; replayed: boolean }>;
 }
 export async function reconcileSettlement(workspace: string, operation: Pick<SettlementOperation, 'id' | 'tableId'>) {

@@ -5,7 +5,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
   const page = await context.newPage();
   const tableId = '550e8400-e29b-41d4-a716-446655440000', employeeId = '550e8400-e29b-41d4-a716-446655440001', productId = '550e8400-e29b-41d4-a716-446655440002', lineId = '550e8400-e29b-41d4-a716-446655440003';
-  let online = true, saves = 0, conflictNext = false;
+  let online = false, saves = 0, conflictNext = false;
   let account = { id: tableId, clientKey: 'mesa-1', version: 0, guests: 2, discount: 0, billRequested: false, operator: { id: employeeId, legacyId: 1, name: 'Ana', active: true }, items: [{ id: lineId, productId, productLegacyId: 1, quantity: 1, unitPrice: 2000, unitDiscount: 0, note: '' }] };
   await page.route('**/api/auth/get-session', r => r.fulfill({ json: { user: { id: 'u', name: 'Usuario', email: 'u@test.com', role: 'user' }, session: { id: 's', userId: 'u', expiresAt: '2099-01-01T00:00:00.000Z' } } }));
   await page.route('**/api/workspaces', r => online ? r.fulfill({ json: [{ id: 'cafe', name: 'Café', status: 'active' }] }) : r.abort('failed'));
@@ -22,14 +22,19 @@ try {
     account = { ...account, version: 1, items: body.items };
     return r.fulfill({ json: { version: 1, replayed: false } });
   });
+  await page.addInitScript(() => localStorage.setItem('mistro.pos.workspace.u', 'cafe'));
   await page.goto('http://127.0.0.1:5174/');
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
+  await page.getByText(/No hay una copia local del punto de venta/).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Abrir Mesa 1, ocupada' }).count(), 0);
+  online = true;
+  await page.getByRole('button', { name: 'Reintentar', exact: true }).click();
   await page.getByRole('button', { name: 'Abrir Mesa 1, ocupada' }).waitFor();
   online = false;
   await page.getByRole('button', { name: 'Resumen', exact: true }).click();
   await page.getByRole('button', { name: 'Punto de venta', exact: true }).click();
   await page.getByText(/Sin conexión · Copia del/).waitFor();
-  await page.getByText(/última copia incluye una caja abierta y existencias/).waitFor();
+  await page.getByText(/Efectivo esperado en esta PC/).waitFor();
   const saved = await page.evaluate(async () => { const { posSnapshot } = await import('/src/pos/offline/snapshot.ts'); return posSnapshot.load('u', 'cafe'); });
   assert.equal(saved.inventory.cash.expectedAmount, '6800');
   assert.equal(saved.inventory.ingredients[0].quantity, '0.6');
@@ -38,7 +43,7 @@ try {
   const dialog = page.getByRole('dialog', { name: 'Salón · Mesa 1' });
   await dialog.getByRole('button', { name: 'Continuar' }).click();
   await dialog.getByLabel('Cantidad', { exact: true }).fill('3');
-  assert.equal(await dialog.getByRole('button', { name: 'Cobrar', exact: true }).count(), 0);
+  assert.equal(await dialog.getByRole('button', { name: 'Cobrar', exact: true }).count(), 1);
   await dialog.getByRole('button', { name: 'Guardar borrador' }).click();
   await page.getByRole('button', { name: 'Abrir Mesa 1, cambios pendientes' }).waitFor();
   assert.equal(saves, 0);
@@ -93,6 +98,6 @@ try {
   await page.getByRole('button', { name: 'Abrir Mesa 1, ocupada' }).waitFor();
   assert.equal(saves, 3);
   assert.equal(account.items[0].quantity, 5);
-  console.log('Offline: borrador aislado, cobro bloqueado y sincronización con PIN OK');
+  console.log('Offline: borrador aislado y sincronización con PIN OK');
   await context.close();
 } finally { await browser.close(); }
